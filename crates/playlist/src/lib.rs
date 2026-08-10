@@ -11,6 +11,10 @@ const FORMAT_VERSION: u32 = 2;
 pub struct PlaylistId(u64);
 
 impl PlaylistId {
+    pub const fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+
     pub const fn get(self) -> u64 {
         self.0
     }
@@ -20,6 +24,10 @@ impl PlaylistId {
 pub struct ItemId(u64);
 
 impl ItemId {
+    pub const fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+
     pub const fn get(self) -> u64 {
         self.0
     }
@@ -279,6 +287,19 @@ impl<P> Engine<P> {
         }
         self.playlists[index].name = name;
         self.playlists[index].touch_structure();
+        self.touch();
+        true
+    }
+
+    pub fn touch_structure_preserving_dirty(&mut self, id: PlaylistId) -> bool {
+        let Some(index) = self.playlist_index(id) else {
+            return false;
+        };
+        let was_dirty = self.playlists[index].is_dirty();
+        self.playlists[index].touch_structure();
+        if !was_dirty {
+            self.playlists[index].last_saved_revision = self.playlists[index].content_revision;
+        }
         self.touch();
         true
     }
