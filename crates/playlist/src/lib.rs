@@ -179,7 +179,14 @@ impl fmt::Display for PersistenceError {
     }
 }
 
-impl Error for PersistenceError {}
+impl Error for PersistenceError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Json(error) => Some(error),
+            Self::UnsupportedVersion(_) | Self::UnknownPlaylist | Self::IdExhausted => None,
+        }
+    }
+}
 
 impl From<serde_json::Error> for PersistenceError {
     fn from(error: serde_json::Error) -> Self {
@@ -398,7 +405,24 @@ impl<P> Engine<P> {
         let Some(index) = self.playlist_index(id) else {
             return false;
         };
-        self.playlists[index].last_saved_revision = self.playlists[index].content_revision;
+        let revision = self.playlists[index].content_revision;
+        self.mark_revision_saved(id, revision)
+    }
+
+    /// Records that the storage write for the contents at `revision` succeeded.
+    ///
+    /// A save may complete after the playlist has changed again. In that case
+    /// only the serialized revision is acknowledged, leaving the newer
+    /// contents dirty for the next save.
+    pub fn mark_revision_saved(&mut self, id: PlaylistId, revision: u64) -> bool {
+        let Some(index) = self.playlist_index(id) else {
+            return false;
+        };
+        let playlist = &mut self.playlists[index];
+        if revision > playlist.content_revision {
+            return false;
+        }
+        playlist.last_saved_revision = playlist.last_saved_revision.max(revision);
         true
     }
 
@@ -624,6 +648,13 @@ struct DocumentRef<'a, P> {
 }
 
 impl<P: Serialize> Engine<P> {
+    /// Serializes a playlist using the current persistence format.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PersistenceError::UnknownPlaylist`] when `id` is not stored
+    /// in this engine, or [`PersistenceError::Json`] when an item payload
+    /// cannot be serialized as JSON.
     pub fn to_bytes(&self, id: PlaylistId) -> Result<Vec<u8>, PersistenceError> {
         let playlist = self.playlist(id).ok_or(PersistenceError::UnknownPlaylist)?;
         Ok(serde_json::to_vec_pretty(&DocumentRef {
@@ -635,6 +666,14 @@ impl<P: Serialize> Engine<P> {
 }
 
 impl<P: DeserializeOwned> Engine<P> {
+    /// Loads a playlist from the current persistence format.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PersistenceError::Json`] for malformed or incompatible JSON,
+    /// [`PersistenceError::UnsupportedVersion`] for an unknown format version,
+    /// or [`PersistenceError::IdExhausted`] when stable ids cannot be minted
+    /// for the loaded playlist and its items.
     pub fn from_bytes(&mut self, bytes: &[u8]) -> Result<PlaylistId, PersistenceError> {
         let version: DocumentVersion = serde_json::from_slice(bytes)?;
         if version.version != FORMAT_VERSION {
@@ -793,6 +832,26 @@ mod tests {
             engine.playlist(id).map(Playlist::structure_revision),
             Some(after_move)
         );
+    }
+
+    #[test]
+    fn acknowledging_an_older_revision_keeps_newer_contents_dirty() {
+        let mut engine = Engine::new();
+        let id = playlist(&mut engine, Some("revisions"));
+        append(&mut engine, id, "serialized");
+        let serialized_revision = engine
+            .playlist(id)
+            .map(Playlist::content_revision)
+            .unwrap_or_default();
+
+        append(&mut engine, id, "newer");
+        assert!(engine.mark_revision_saved(id, serialized_revision));
+
+        let Some(playlist) = engine.playlist(id) else {
+            panic!("playlist");
+        };
+        assert_eq!(playlist.last_saved_revision(), serialized_revision);
+        assert!(playlist.is_dirty());
     }
 
     #[test]
@@ -1009,10 +1068,11 @@ mod tests {
             result,
             Err(PersistenceError::UnsupportedVersion(1))
         ));
-        assert!(matches!(
-            engine.from_bytes(b"not json"),
-            Err(PersistenceError::Json(_))
-        ));
+        let Err(error) = engine.from_bytes(b"not json") else {
+            panic!("invalid JSON loaded");
+        };
+        assert!(matches!(error, PersistenceError::Json(_)));
+        assert!(std::error::Error::source(&error).is_some());
         assert_eq!(engine.playlists().len(), 0);
         assert_eq!(engine.revision(), 0);
     }
