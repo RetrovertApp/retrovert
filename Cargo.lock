@@ -79,7 +79,9 @@ dependencies = [
 name = "retrovert-player"
 version = "0.1.0"
 dependencies = [
+ "log",
  "retrovert-host",
+ "thiserror",
 ]
 
 [[package]]

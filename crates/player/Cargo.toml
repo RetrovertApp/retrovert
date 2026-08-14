@@ -6,8 +6,9 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+log = "0.4"
 retrovert-host.workspace = true
+thiserror = "2"
 
 [lints]
 workspace = true
-
