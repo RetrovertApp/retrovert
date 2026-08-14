@@ -7,8 +7,8 @@ The Cargo workspace contains two crates:
 - `retrovert-player`: the headless playback engine
 - `retrovert-player-ui`: the Flowi renderer layer
 
-Both crates are intentionally empty. They establish the extraction boundary before code
-moves from Replay Frontend.
+`retrovert-player` owns headless decode coordination. `retrovert-player-ui` owns renderer
+selection, the seven views, their Flowi resources, and their golden fixtures.
 
 ## Checkout layout
 
@@ -33,4 +33,3 @@ root, run:
 
 Original code is MIT licensed. Third-party asset terms and provenance records live in
 [`LICENSES`](LICENSES/README.md).
-

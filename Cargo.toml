@@ -12,6 +12,8 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
+flowi = { path = "../flowi/rust/flowi" }
+log = "0.4"
 retrovert-host = { path = "../retrovert/retrovert_api/rust/retrovert-host" }
 retrovert-player = { path = "crates/retrovert-player" }
 
@@ -26,4 +28,3 @@ undocumented_unsafe_blocks = "deny"
 
 [profile.release]
 debug = true
-

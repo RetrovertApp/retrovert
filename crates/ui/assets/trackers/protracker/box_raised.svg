@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="48" viewBox="0 0 1440 48">
+  <!-- Simple 3D raised box at target resolution -->
+  <!-- Fill -->
+  <rect x="0" y="0" width="1440" height="48" fill="#888888"/>
+  <!-- Top highlight -->
+  <rect x="0" y="0" width="1440" height="4" fill="#BBBBBB"/>
+  <!-- Left highlight -->
+  <rect x="0" y="0" width="4" height="48" fill="#BBBBBB"/>
+  <!-- Bottom shadow -->
+  <rect x="0" y="44" width="1440" height="4" fill="#555555"/>
+  <!-- Right shadow -->
+  <rect x="1436" y="0" width="4" height="48" fill="#555555"/>
+</svg>
