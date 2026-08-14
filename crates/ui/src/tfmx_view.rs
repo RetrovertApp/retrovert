@@ -7,6 +7,7 @@ use retrovert_host::{
 use crate::pattern_display::cell_text;
 use crate::scope_display::ScopeDisplay;
 use crate::view::View;
+use crate::MONO_FONT_PATH;
 
 const MAX_CHANNELS: usize = 8;
 const WIDTH: f32 = 1_920.0;
@@ -48,8 +49,8 @@ pub struct TfmxView {
 impl TfmxView {
     pub fn new(assets: Option<&Mount>) -> Self {
         let font = assets.map_or_else(
-            || Font::load("fonts/JetBrainsMono-Regular.ttf", FONT_SIZE),
-            |mount| Font::load_mount(mount, "fonts/JetBrainsMono-Regular.ttf", FONT_SIZE),
+            || Font::load(MONO_FONT_PATH, FONT_SIZE),
+            |mount| Font::load_mount(mount, MONO_FONT_PATH, FONT_SIZE),
         );
         Self {
             font,

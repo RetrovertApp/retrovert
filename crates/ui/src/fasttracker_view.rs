@@ -9,6 +9,7 @@ use crate::pattern_display::cell_text;
 use crate::retro_font::{RetroFont, RetroFontConfig};
 use crate::scope_display::ScopeDisplay;
 use crate::view::View;
+use crate::MONO_FONT_PATH;
 
 const MAX_CHANNELS: usize = 64;
 const WIDTH: f32 = 1_920.0;
@@ -80,8 +81,8 @@ impl FastTrackerView {
         let font_small = create_font(packed_faces::FT2_SMALL, FONT4_CHARSET, 624, 8, 8, 8)?;
         let font_tiny = create_font(packed_faces::FT2_TINY, FONT3_CHARSET, 172, 7, 4, 7)?;
         let header_font = assets.map_or_else(
-            || Font::load("fonts/JetBrainsMono-Regular.ttf", HEADER_FONT_SIZE),
-            |mount| Font::load_mount(mount, "fonts/JetBrainsMono-Regular.ttf", HEADER_FONT_SIZE),
+            || Font::load(MONO_FONT_PATH, HEADER_FONT_SIZE),
+            |mount| Font::load_mount(mount, MONO_FONT_PATH, HEADER_FONT_SIZE),
         );
         Some(Self {
             font,

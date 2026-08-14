@@ -14,5 +14,8 @@ retrovert-host.workspace = true
 png = "0.17"
 retrovert-player.workspace = true
 
+[package.metadata]
+asset-stager = "../../tools/stage-player-ui-assets/stage.py"
+
 [lints]
 workspace = true

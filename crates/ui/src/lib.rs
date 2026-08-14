@@ -28,6 +28,9 @@ use crate::tfmx_view::TfmxView;
 use crate::v2m_view::V2mView;
 use crate::vgm_view::VgmView;
 
+const MONO_FONT_PATH: &str = "fonts/JetBrainsMono-Regular.ttf";
+const BOX_RAISED_PATH: &str = "trackers/protracker/box_raised.svg";
+
 /// Host-owned values required to render one player frame.
 pub struct RenderContext<'a> {
     /// Decoder name reported by the active playback plugin.
@@ -87,6 +90,15 @@ mod integration_tests {
     const SAMPLE_RATE: u32 = 48_000;
     const CHANNELS: u32 = 2;
     const BUFFER_FRAMES: u32 = 4_096;
+
+    #[test]
+    fn requested_runtime_assets_are_manifested() {
+        let manifest = include_str!("../assets/manifest.json");
+        for path in [MONO_FONT_PATH, BOX_RAISED_PATH] {
+            let entry = format!(r#""path": "{path}""#);
+            assert!(manifest.contains(&entry));
+        }
+    }
 
     fn generated_protracker_module(build_dir: &Path, name: &str) -> PathBuf {
         let media_path = build_dir.join("test_data").join(name);

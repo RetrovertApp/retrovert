@@ -5,6 +5,7 @@ use retrovert_host::visualization::VizSnapshot;
 
 use crate::scope_display::ScopeDisplay;
 use crate::view::View;
+use crate::MONO_FONT_PATH;
 
 const MAX_CHANNELS: usize = 64;
 const SCALED_WIDTH: f32 = 1_920.0;
@@ -42,8 +43,8 @@ pub struct GeneralView {
 impl GeneralView {
     pub fn new(assets: Option<&Mount>) -> Self {
         let font = assets.map_or_else(
-            || Font::load("fonts/JetBrainsMono-Regular.ttf", FONT_SIZE as u16),
-            |mount| Font::load_mount(mount, "fonts/JetBrainsMono-Regular.ttf", FONT_SIZE as u16),
+            || Font::load(MONO_FONT_PATH, FONT_SIZE as u16),
+            |mount| Font::load_mount(mount, MONO_FONT_PATH, FONT_SIZE as u16),
         );
         Self { font }
     }

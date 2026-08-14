@@ -10,6 +10,7 @@ use crate::retro_font::{RetroFont, RetroFontConfig};
 use crate::scope_display::ScopeDisplay;
 use crate::view::View;
 use crate::vu_display::VuDisplay;
+use crate::BOX_RAISED_PATH;
 
 const CHANNELS: usize = 4;
 const VISIBLE_ROWS: i32 = 23;
@@ -115,7 +116,7 @@ impl PtView {
         let box_raised = assets.map_or(ImageHandle::INVALID, |mount| {
             Image::load_mount(
                 mount,
-                "trackers/protracker/box_raised.svg",
+                BOX_RAISED_PATH,
                 ImageLoadOptions {
                     target_width: SCALED_WIDTH as i32,
                     target_height: 48,
