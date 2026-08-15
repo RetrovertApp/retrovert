@@ -225,7 +225,10 @@ fn force_re_init_clears_the_previous_channels_published_files() {
     std::fs::write(
         &manifest_path,
         serde_json::to_vec(&serde_json::json!({
-            "revision": "rev-1",
+            "schema": 1,
+            "version": 1,
+            "source_revision": "rev-1",
+            "published": "2026-08-15T12:00:00Z",
             "artifacts": [],
         }))
         .unwrap(),

@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
 use ed25519_dalek::pkcs8::{DecodePrivateKey, EncodePrivateKey};
-use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
+use ed25519_dalek::{Signer, SigningKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
@@ -49,18 +49,6 @@ impl PublicKey {
     /// The TUF key ID: SHA-256 of this key's canonical JSON.
     pub fn key_id(&self) -> Result<String> {
         Ok(hex::encode(Sha256::digest(canonical::to_bytes(self)?)))
-    }
-
-    /// The raw 32-byte public key.
-    pub fn to_verifying_key(&self) -> Result<VerifyingKey> {
-        let decoded = hex::decode(&self.keyval.public)
-            .map_err(|e| Error::key("ed25519 public key is not valid hex", e))?;
-        let raw: [u8; 32] = decoded
-            .as_slice()
-            .try_into()
-            .map_err(|_| Error::PublicKeyLength(decoded.len()))?;
-        VerifyingKey::from_bytes(&raw)
-            .map_err(|e| Error::key("ed25519 public key is not a valid curve point", e))
     }
 }
 
@@ -131,7 +119,7 @@ impl KeyPair {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{Signature, Verifier};
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
     fn key() -> KeyPair {
         KeyPair::from_seed(&[7u8; 32])
@@ -173,17 +161,16 @@ mod tests {
         );
     }
 
+    /// The publisher never verifies — that is the client's job, through
+    /// `sigstore-tuf`. This checks the two halves agree at the point they are
+    /// produced, so a mismatch surfaces here rather than in a channel.
     #[test]
     fn signature_verifies_against_the_declared_public_key() {
         let pair = key();
-        let sig = hex::decode(pair.sign_hex(b"payload")).unwrap();
-        let sig = Signature::from_slice(&sig).unwrap();
-        assert!(
-            pair.public()
-                .to_verifying_key()
-                .unwrap()
-                .verify(b"payload", &sig)
-                .is_ok()
-        );
+        let declared = hex::decode(pair.public().keyval.public).unwrap();
+        let verifying = VerifyingKey::from_bytes(&declared.try_into().unwrap()).unwrap();
+        let sig = Signature::from_slice(&hex::decode(pair.sign_hex(b"payload")).unwrap()).unwrap();
+
+        assert!(verifying.verify(b"payload", &sig).is_ok());
     }
 }

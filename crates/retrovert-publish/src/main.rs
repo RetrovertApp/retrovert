@@ -68,10 +68,10 @@ fn run_publish(args: &PublishArgs) -> Result<()> {
     for path in &report.written {
         println!("  wrote   {}", path.display());
     }
-    match &report.version {
-        Some(version) => println!("release:  {version} (revision {})", report.revision),
-        None => println!("release:  revision {}", report.revision),
-    }
+    println!(
+        "release:  v{} (revision {})",
+        report.version, report.source_revision
+    );
     println!("generation: {}", report.generation_id);
     Ok(())
 }

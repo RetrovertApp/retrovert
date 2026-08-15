@@ -21,10 +21,6 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    /// A declared Ed25519 public key was not 32 bytes.
-    #[error("ed25519 public key must be 32 bytes, got {0}")]
-    PublicKeyLength(usize),
-
     /// The same key was passed twice when signing; TUF forbids duplicate key
     /// IDs in a signatures array.
     #[error("duplicate signing key id {0}")]

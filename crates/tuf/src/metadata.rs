@@ -63,10 +63,7 @@ impl std::fmt::Display for RoleName {
 }
 
 /// A role payload that can be wrapped in a [`Signed`] envelope.
-pub trait Role: Serialize {
-    /// Which role this payload is.
-    const NAME: RoleName;
-}
+pub trait Role: Serialize {}
 
 /// A single signature over a metadata file's canonical `signed` bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -200,9 +197,7 @@ impl Root {
     }
 }
 
-impl Role for Root {
-    const NAME: RoleName = RoleName::Root;
-}
+impl Role for Root {}
 
 /// A reference to another metadata file, as recorded by a parent role.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -242,9 +237,6 @@ pub struct TargetFile {
     pub length: u64,
     /// The target's hashes, algorithm to hex digest.
     pub hashes: BTreeMap<String, String>,
-    /// Opaque application metadata.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub custom: Option<serde_json::Value>,
     /// Additional fields defined by a compatible TUF producer.
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
@@ -282,9 +274,7 @@ impl Targets {
     }
 }
 
-impl Role for Targets {
-    const NAME: RoleName = RoleName::Targets;
-}
+impl Role for Targets {}
 
 /// The `snapshot` role: pins the version of every targets metadata file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -318,9 +308,7 @@ impl Snapshot {
     }
 }
 
-impl Role for Snapshot {
-    const NAME: RoleName = RoleName::Snapshot;
-}
+impl Role for Snapshot {}
 
 /// The `timestamp` role: pins the current snapshot version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -354,9 +342,7 @@ impl Timestamp {
     }
 }
 
-impl Role for Timestamp {
-    const NAME: RoleName = RoleName::Timestamp;
-}
+impl Role for Timestamp {}
 
 /// The `{"sha256": "<hex>"}` hash map TUF records for a file.
 #[must_use]

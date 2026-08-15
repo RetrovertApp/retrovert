@@ -18,13 +18,17 @@ use tempfile::TempDir;
 
 fn manifest_bytes(revision: &str) -> Vec<u8> {
     serde_json::to_vec_pretty(&serde_json::json!({
-        "revision": revision,
-        "version": "1.2.0",
+        "schema": 1,
+        "version": 1,
+        "source_revision": revision,
+        "published": "2026-08-15T12:00:00Z",
         "artifacts": [{
             "name": "app",
-            "target": format!("app-{revision}-linux-x86_64.tar.zst"),
+            "target": "linux-x86_64",
+            "path": format!("app-{revision}-linux-x86_64.tar.zst"),
             "sha256": "ab".repeat(32),
             "size": 42,
+            "revision": revision,
         }],
     }))
     .unwrap()
@@ -120,19 +124,26 @@ fn republishing_an_identical_manifest_reproduces_the_generation_id() {
 }
 
 #[test]
-fn a_manifest_missing_revision_is_rejected_before_anything_is_written() {
+fn a_manifest_missing_source_revision_is_rejected_before_anything_is_written() {
     let (dir, workspace) = seeded_workspace();
     let path = dir.path().join("manifest.json");
     std::fs::write(
         &path,
-        serde_json::to_vec(&serde_json::json!({ "artifacts": [] })).unwrap(),
+        serde_json::to_vec(&serde_json::json!({
+            "schema": 1,
+            "version": 1,
+            "published": "2026-08-15T12:00:00Z",
+            "artifacts": [],
+        }))
+        .unwrap(),
     )
     .unwrap();
 
     let err = publish(&workspace, &path, now()).unwrap_err();
     assert!(matches!(
         err,
-        retrovert_publish::Error::Tuf(retrovert_tuf::Error::Manifest(m)) if m.contains("revision")
+        retrovert_publish::Error::Tuf(retrovert_tuf::Error::Manifest(m))
+            if m.contains("source_revision")
     ));
 
     let updater = refresh_with_sigstore_tuf(&workspace, now()).unwrap();

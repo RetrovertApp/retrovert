@@ -25,10 +25,10 @@ use crate::workspace::Workspace;
 pub struct PublishReport {
     /// The generation id: the digest of the manifest's exact bytes.
     pub generation_id: String,
-    /// The manifest's source revision.
-    pub revision: String,
-    /// The manifest's display version, if it declares one.
-    pub version: Option<String>,
+    /// The aggregate repository commit the release set was gathered from.
+    pub source_revision: String,
+    /// The channel's release-set number, matching its `<channel>/vN` tag.
+    pub version: u64,
     /// Every file written, in publication order; the closing `timestamp.json`
     /// write commits the generation.
     pub written: Vec<PathBuf>,
@@ -78,7 +78,6 @@ pub fn publish(
     let manifest_entry = TargetFile {
         length: manifest_bytes.len() as u64,
         hashes: sha256_map(&manifest_bytes),
-        custom: None,
         extra: BTreeMap::new(),
     };
     let targets = Signed::new(
@@ -131,7 +130,7 @@ pub fn publish(
 
     Ok(PublishReport {
         generation_id,
-        revision: manifest.revision,
+        source_revision: manifest.source_revision,
         version: manifest.version,
         written,
     })
