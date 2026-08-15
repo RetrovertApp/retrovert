@@ -9,14 +9,16 @@
 pub mod canonical;
 pub mod error;
 pub mod key;
+pub mod manifest;
 pub mod metadata;
 pub mod policy;
 pub mod repository;
 
 pub use error::{Error, Result};
 pub use key::{KeyPair, KeyVal, PublicKey};
+pub use manifest::{Artifact, Manifest};
 pub use metadata::{
     MetaFile, Role, RoleKeys, RoleName, Root, Signature, Signed, Snapshot, TargetFile, Targets,
     Timestamp,
 };
-pub use repository::{Channel, published_names};
+pub use repository::{Channel, published_names, target_published_name};

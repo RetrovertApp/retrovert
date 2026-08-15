@@ -6,9 +6,11 @@
 pub mod error;
 pub mod init;
 pub mod keys;
+pub mod publish;
 pub mod workspace;
 
 pub use error::{Error, Result};
 pub use init::{InitReport, KeySet, init};
 pub use keys::KeyStore;
+pub use publish::{PublishReport, publish};
 pub use workspace::Workspace;

@@ -23,6 +23,17 @@ pub fn published_names(role: RoleName, version: u64) -> Vec<String> {
     }
 }
 
+/// The file name a target file is published under with consistent snapshots:
+/// the digest prefixes the file name only, so `dir/name` becomes
+/// `dir/<sha256>.name`.
+#[must_use]
+pub fn target_published_name(target_path: &str, sha256_hex: &str) -> String {
+    match target_path.rsplit_once('/') {
+        Some((dir, name)) => format!("{dir}/{sha256_hex}.{name}"),
+        None => format!("{sha256_hex}.{target_path}"),
+    }
+}
+
 /// A channel directory: `metadata/` beside `targets/`.
 #[derive(Debug, Clone)]
 pub struct Channel {
@@ -71,6 +82,12 @@ impl Channel {
     /// reads a truncated file.
     pub fn write_metadata(&self, file_name: &str, bytes: &[u8]) -> Result<()> {
         write_atomically(&self.metadata_dir().join(file_name), bytes)
+    }
+
+    /// Write one target file, atomically, for the same reason as
+    /// [`Channel::write_metadata`].
+    pub fn write_target(&self, file_name: &str, bytes: &[u8]) -> Result<()> {
+        write_atomically(&self.targets_dir().join(file_name), bytes)
     }
 }
 
@@ -132,6 +149,18 @@ mod tests {
         assert_eq!(published_names(RoleName::Snapshot, 3), ["3.snapshot.json"]);
         assert_eq!(published_names(RoleName::Targets, 3), ["3.targets.json"]);
         assert_eq!(published_names(RoleName::Timestamp, 3), ["timestamp.json"]);
+    }
+
+    #[test]
+    fn consistent_snapshot_target_naming_prefixes_the_file_name_only() {
+        assert_eq!(
+            target_published_name("manifest.json", "abc123"),
+            "abc123.manifest.json"
+        );
+        assert_eq!(
+            target_published_name("nested/dir/app.bin", "abc123"),
+            "nested/dir/abc123.app.bin"
+        );
     }
 
     fn channel() -> (tempfile::TempDir, Channel) {

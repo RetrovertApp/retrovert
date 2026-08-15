@@ -4,62 +4,18 @@
 //! rather than a hand-rolled checker, so publisher and consumer are held to the
 //! same reading of the metadata from the first commit.
 
+mod common;
+
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use common::{metadata_dir, now, read, refresh_with_sigstore_tuf, seeded_keys, seeded_workspace};
 use jiff::{Timestamp, ToSpan, tz::TimeZone};
-use retrovert_publish::{KeySet, Workspace, init};
+use retrovert_publish::{Workspace, init};
 use retrovert_tuf::{KeyPair, RoleName};
-use sigstore_tuf::cache::{FileStore, StoreRepository};
-use sigstore_tuf::{Metadata, Updater};
+use sigstore_tuf::Metadata;
 use tempfile::TempDir;
-
-/// A fixed instant, so every expiry assertion has an exact expected value.
-fn now() -> Timestamp {
-    "2026-08-15T12:00:00Z".parse().unwrap()
-}
-
-/// Fixed keys, so `init`'s output is reproducible byte for byte.
-fn seeded_keys() -> KeySet {
-    KeySet {
-        root: KeyPair::from_seed(&[1u8; 32]),
-        targets: KeyPair::from_seed(&[2u8; 32]),
-        snapshot: KeyPair::from_seed(&[3u8; 32]),
-        timestamp: KeyPair::from_seed(&[4u8; 32]),
-    }
-}
-
-fn seeded_workspace() -> (TempDir, Workspace) {
-    let dir = TempDir::new().unwrap();
-    let workspace = Workspace::new(dir.path().join("channel"));
-    init(&workspace, &seeded_keys(), now(), false).unwrap();
-    (dir, workspace)
-}
-
-fn metadata_dir(workspace: &Workspace) -> PathBuf {
-    workspace.channel().metadata_dir()
-}
-
-fn read(workspace: &Workspace, name: &str) -> Vec<u8> {
-    std::fs::read(metadata_dir(workspace).join(name)).unwrap()
-}
-
-/// Bootstrap `sigstore-tuf` from the emitted root and run its refresh workflow
-/// against the channel directory, offline.
-///
-/// `StoreRepository` is synchronous under an async trait, so the futures are
-/// always ready and a trivial `block_on` is enough — no runtime needed.
-fn refresh_with_sigstore_tuf(
-    workspace: &Workspace,
-    at: Timestamp,
-) -> sigstore_tuf::Result<Updater> {
-    let dir = metadata_dir(workspace);
-    let root = std::fs::read(dir.join("root.json")).unwrap();
-    let mut updater = Updater::new(StoreRepository::new(FileStore::new(dir)), &root)?;
-    pollster::block_on(updater.refresh(at))?;
-    Ok(updater)
-}
 
 fn expected_expiry(span: jiff::Span) -> String {
     now()

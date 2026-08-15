@@ -20,6 +20,25 @@ pub enum Error {
         source: std::io::Error,
     },
 
+    /// An existing metadata file in the channel could not be parsed.
+    #[error("{path}: {source}")]
+    Metadata {
+        /// The metadata file being read.
+        path: PathBuf,
+        /// The underlying parse error.
+        #[source]
+        source: serde_json::Error,
+    },
+
+    /// A parent role does not pin the metadata file publish must supersede.
+    #[error("{path}: does not pin {name}")]
+    MissingPin {
+        /// The parent role's metadata file.
+        path: PathBuf,
+        /// The unversioned name of the missing pin.
+        name: String,
+    },
+
     /// `init` was pointed at a directory that already has contents.
     #[error("{0} is not empty; pass --force to re-initialize it and replace its keys")]
     NotEmpty(PathBuf),

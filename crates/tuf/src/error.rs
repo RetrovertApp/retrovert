@@ -30,6 +30,10 @@ pub enum Error {
     #[error("duplicate signing key id {0}")]
     DuplicateKeyId(String),
 
+    /// A release-set manifest was malformed or failed schema validation.
+    #[error("invalid manifest: {0}")]
+    Manifest(String),
+
     /// The operating system random source was unavailable.
     #[error("could not read random bytes: {0}")]
     Random(getrandom::Error),

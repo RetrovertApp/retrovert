@@ -770,6 +770,7 @@ dependencies = [
  "jiff",
  "pollster",
  "retrovert-tuf",
+ "serde",
  "serde_json",
  "sigstore-tuf",
  "tempfile",

@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use jiff::Timestamp;
-use retrovert_publish::{KeySet, Result, Workspace, init};
+use retrovert_publish::{KeySet, Result, Workspace, init, publish};
 
 #[derive(Debug, Parser)]
 #[command(name = "retrovert-publish", version, about, long_about = None)]
@@ -18,6 +18,9 @@ struct Cli {
 enum Command {
     /// Create a channel and a fresh disposable test root in an empty directory.
     Init(InitArgs),
+
+    /// Publish a release-set manifest as the channel's next generation.
+    Publish(PublishArgs),
 }
 
 #[derive(Debug, Args)]
@@ -28,6 +31,15 @@ struct InitArgs {
     /// Initialize even if the directory already has contents.
     #[arg(long)]
     force: bool,
+}
+
+#[derive(Debug, Args)]
+struct PublishArgs {
+    /// Workspace holding the channel and its signing keys.
+    dir: PathBuf,
+
+    /// The release-set manifest to publish.
+    manifest: PathBuf,
 }
 
 fn main() -> ExitCode {
@@ -44,7 +56,24 @@ fn main() -> ExitCode {
 fn run(cli: &Cli) -> Result<()> {
     match &cli.command {
         Command::Init(args) => run_init(args),
+        Command::Publish(args) => run_publish(args),
     }
+}
+
+fn run_publish(args: &PublishArgs) -> Result<()> {
+    let workspace = Workspace::new(&args.dir);
+    let report = publish(&workspace, &args.manifest, Timestamp::now())?;
+
+    println!("channel:  {}", workspace.channel().path().display());
+    for path in &report.written {
+        println!("  wrote   {}", path.display());
+    }
+    match &report.version {
+        Some(version) => println!("release:  {version} (revision {})", report.revision),
+        None => println!("release:  revision {}", report.revision),
+    }
+    println!("generation: {}", report.generation_id);
+    Ok(())
 }
 
 fn run_init(args: &InitArgs) -> Result<()> {
