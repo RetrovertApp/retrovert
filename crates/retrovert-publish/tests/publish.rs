@@ -51,6 +51,9 @@ fn publishing_two_generations_resolves_the_latest() {
     let first = publish(&workspace, &write_manifest(dir.path(), "rev-1"), now()).unwrap();
     let second = publish(&workspace, &write_manifest(dir.path(), "rev-2"), now()).unwrap();
     assert_ne!(first.generation_id, second.generation_id);
+    assert_eq!(first.version, 1);
+    assert_eq!(first.source_revision, "rev-1");
+    assert_eq!(second.source_revision, "rev-2");
 
     let mut updater = refresh_with_sigstore_tuf(&workspace, now()).unwrap();
     let targets = updater.trusted().targets().unwrap();

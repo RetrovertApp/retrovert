@@ -219,8 +219,19 @@ mod tests {
         let err = parse(&json).unwrap_err();
         assert!(matches!(err, Error::Manifest(m) if m.contains("schema 2")));
 
-        json["schema"] = serde_json::Value::Null;
-        assert!(parse(&json).is_err(), "schema is mandatory");
+        json = manifest_json();
+        json.as_object_mut().unwrap().remove("schema");
+        let err = parse(&json).unwrap_err();
+        assert!(matches!(err, Error::Manifest(m) if m.contains("schema")));
+    }
+
+    #[test]
+    fn a_schema_1_document_carrying_unknown_fields_still_parses() {
+        let mut json = manifest_json();
+        json["channel_note"] = "written by a later producer".into();
+        json["artifacts"][0]["signature_path"] = "spu-linux-x86_64.tar.zst.sig".into();
+
+        assert!(parse(&json).is_ok(), "schema 1 extends, never replaces");
     }
 
     #[test]
@@ -298,6 +309,30 @@ mod tests {
             .unwrap()
             .remove("revision");
         assert!(parse(&json).is_err());
+    }
+
+    #[test]
+    fn an_artifact_display_version_is_optional() {
+        let mut json = manifest_json();
+        assert_eq!(parse(&json).unwrap().artifacts[0].version, None);
+
+        json["artifacts"][0]["version"] = "1.2.0".into();
+        assert_eq!(
+            parse(&json).unwrap().artifacts[0].version.as_deref(),
+            Some("1.2.0")
+        );
+    }
+
+    #[test]
+    fn an_artifact_name_must_not_be_empty() {
+        let mut json = manifest_json();
+        json["artifacts"][0]["name"] = "".into();
+        let repeated = json["artifacts"][0].clone();
+        json["artifacts"].as_array_mut().unwrap().push(repeated);
+
+        // Two nameless entries are duplicates as well; the name check has to win.
+        let err = parse(&json).unwrap_err();
+        assert!(matches!(err, Error::Manifest(m) if m.contains("name")));
     }
 
     #[test]
