@@ -1,0 +1,23 @@
+[package]
+name = "retrovert-tuf"
+description = "TUF metadata model and signing primitives shared by the Retrovert publisher and updater"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ed25519-dalek.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+jiff.workspace = true
+olpc-cjson.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true

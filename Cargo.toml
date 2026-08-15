@@ -1,0 +1,40 @@
+[workspace]
+resolver = "3"
+members = ["crates/retrovert-tuf", "crates/retrovert-publish"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/RetrovertApp/retrovert-updater"
+
+[workspace.dependencies]
+retrovert-tuf = { path = "crates/retrovert-tuf", version = "0.1.0" }
+
+clap = { version = "4.6", features = ["derive"] }
+ed25519-dalek = { version = "3.0", features = ["pem", "pkcs8", "zeroize"] }
+getrandom = "0.3"
+hex = "0.4"
+jiff = "0.2"
+olpc-cjson = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+zeroize = "1.8"
+
+pollster = "1.0"
+sigstore-tuf = { version = "0.11", default-features = false }
+tempfile = "3"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+# Every fallible function here fails for the reason its signature implies; a
+# boilerplate `# Errors` section per function would be noise, not documentation.
+missing_errors_doc = "allow"

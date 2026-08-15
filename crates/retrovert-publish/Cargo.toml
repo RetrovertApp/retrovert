@@ -1,0 +1,29 @@
+[package]
+name = "retrovert-publish"
+description = "Publish-side CLI for Retrovert release channels: TUF repository init, signing, and publish"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "retrovert-publish"
+path = "src/main.rs"
+
+[dependencies]
+retrovert-tuf.workspace = true
+
+clap.workspace = true
+jiff.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true
+sigstore-tuf.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
