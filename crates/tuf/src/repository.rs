@@ -81,33 +81,42 @@ impl Channel {
 /// is only atomic within a filesystem, and is flushed before the rename so a
 /// crash cannot leave the destination name pointing at unwritten data.
 fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
-    let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str())) else {
+    let Some(dir) = path.parent() else {
         return Err(Error::io(
             path,
             std::io::Error::other("not a writable file path"),
         ));
     };
-    // Process ID keeps two publishers writing the same channel from colliding
-    // on the temporary name; the leading dot keeps it out of directory listings
-    // if one is ever left behind by a crash.
-    let temp = dir.join(format!(".{name}.{}.tmp", std::process::id()));
 
-    let write = || -> std::io::Result<()> {
-        let mut file = std::fs::File::create(&temp)?;
-        file.write_all(bytes)?;
-        file.sync_all()
-    };
-    if let Err(e) = write() {
-        // INTENTIONAL: cleanup is best-effort; the write error is what matters.
-        drop(std::fs::remove_file(&temp));
-        return Err(Error::io(&temp, e));
-    }
+    // `NamedTempFile` reserves a randomized name with exclusive creation. That
+    // prevents both symlink attacks against a predictable temporary path and
+    // collisions between concurrent writers in this process.
+    let mut temp = tempfile::NamedTempFile::new_in(dir).map_err(|e| Error::io(dir, e))?;
+    temp.write_all(bytes)
+        .map_err(|e| Error::io(temp.path(), e))?;
+    temp.as_file()
+        .sync_all()
+        .map_err(|e| Error::io(temp.path(), e))?;
+    let file = temp.persist(path).map_err(|e| Error::io(path, e.error))?;
+    // Sync through the post-rename handle as a best-effort metadata flush on
+    // platforms where `std` cannot open a directory for syncing.
+    file.sync_all().map_err(|e| Error::io(path, e))?;
 
-    std::fs::rename(&temp, path).map_err(|e| {
-        // INTENTIONAL: as above — do not mask the rename failure.
-        drop(std::fs::remove_file(&temp));
-        Error::io(path, e)
-    })
+    sync_directory(dir)
+}
+
+/// Persist a directory-entry update after an atomic rename.
+#[cfg(unix)]
+fn sync_directory(path: &Path) -> Result<()> {
+    std::fs::File::open(path)
+        .and_then(|dir| dir.sync_all())
+        .map_err(|e| Error::io(path, e))
+}
+
+/// Directory handles cannot be opened and synced portably through `std`.
+#[cfg(not(unix))]
+fn sync_directory(_path: &Path) -> Result<()> {
+    Ok(())
 }
 
 #[cfg(test)]
@@ -147,6 +156,30 @@ mod tests {
             std::fs::read(channel.metadata_dir().join("timestamp.json")).unwrap(),
             b"second"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn metadata_writes_do_not_follow_a_predictable_temporary_symlink() {
+        let (dir, channel) = channel();
+        let victim = dir.path().join("victim");
+        std::fs::write(&victim, b"keep me").unwrap();
+
+        let planted = channel
+            .metadata_dir()
+            .join(format!(".timestamp.json.{}.tmp", std::process::id()));
+        std::os::unix::fs::symlink(&victim, &planted).unwrap();
+
+        channel
+            .write_metadata("timestamp.json", b"metadata")
+            .unwrap();
+
+        assert_eq!(std::fs::read(&victim).unwrap(), b"keep me");
+        assert_eq!(
+            std::fs::read(channel.metadata_dir().join("timestamp.json")).unwrap(),
+            b"metadata"
+        );
+        assert!(planted.is_symlink());
     }
 
     #[test]

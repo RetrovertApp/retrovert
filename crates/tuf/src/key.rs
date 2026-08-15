@@ -1,5 +1,7 @@
 //! Ed25519 keys: generation, PKCS#8 PEM storage, and the TUF key object.
 
+use std::collections::BTreeMap;
+
 use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
 use ed25519_dalek::pkcs8::{DecodePrivateKey, EncodePrivateKey};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
@@ -18,17 +20,9 @@ pub const SCHEME: &str = "ed25519";
 
 /// The public half of a signing key, in the shape TUF metadata declares it.
 ///
-/// Serializes to `{"keytype", "scheme", "keyval": {"public"}}` — exactly the
-/// field set `securesystemslib` hashes to derive a key ID, so
-/// [`PublicKey::key_id`] can canonicalize `self` directly.
-///
-/// That equivalence is why deserialization rejects unknown fields: a key
-/// carrying an extra field (`keyid_hash_algorithms`, say) would round-trip
-/// through this type with the field dropped, and [`PublicKey::key_id`] would
-/// then compute an ID that disagrees with the one the publisher declared.
-/// Failing to parse is the honest outcome.
+/// Additional producer fields are preserved so they remain covered by
+/// canonicalization when metadata is verified or reserialized.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct PublicKey {
     /// Always [`KEY_TYPE`].
     pub keytype: String,
@@ -36,14 +30,19 @@ pub struct PublicKey {
     pub scheme: String,
     /// The key material.
     pub keyval: KeyVal,
+    /// Additional fields defined by a compatible TUF producer.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// The inner `keyval` object of a TUF key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct KeyVal {
     /// Hex-encoded raw 32-byte Ed25519 public key.
     pub public: String,
+    /// Additional fields defined by a compatible TUF producer.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 impl PublicKey {
@@ -111,7 +110,9 @@ impl KeyPair {
             scheme: SCHEME.to_string(),
             keyval: KeyVal {
                 public: hex::encode(self.inner.verifying_key().to_bytes()),
+                extra: BTreeMap::new(),
             },
+            extra: BTreeMap::new(),
         }
     }
 
@@ -150,16 +151,16 @@ mod tests {
     }
 
     #[test]
-    fn a_key_carrying_an_extra_field_is_rejected_rather_than_silently_trimmed() {
+    fn extra_key_fields_survive_a_round_trip() {
         let public = key().public();
         let json = format!(
-            r#"{{"keytype":"ed25519","scheme":"ed25519","keyval":{{"public":"{}"}},"keyid_hash_algorithms":["sha256"]}}"#,
+            r#"{{"keytype":"ed25519","scheme":"ed25519","keyval":{{"public":"{}","x-keyval":"preserved"}},"keyid_hash_algorithms":["sha256"]}}"#,
             public.keyval.public
         );
-        // Accepting it would drop the extra field and derive a key ID that
-        // disagrees with the publisher's.
-        serde_json::from_str::<PublicKey>(&json)
-            .expect_err("unknown key fields change the key ID and must not be ignored");
+        let expected: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let parsed: PublicKey = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(serde_json::to_value(parsed).unwrap(), expected);
     }
 
     #[test]

@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::metadata::RoleName;
 
 /// The TUF specification version this publisher writes.
-pub const SPEC_VERSION: &str = "1.0.31";
+pub const SPEC_VERSION: &str = "1.0.33";
 
 /// Days a `timestamp` role stays valid.
 pub const TIMESTAMP_EXPIRY_DAYS: i64 = 14;

@@ -25,6 +25,11 @@ pub enum Error {
     #[error("ed25519 public key must be 32 bytes, got {0}")]
     PublicKeyLength(usize),
 
+    /// The same key was passed twice when signing; TUF forbids duplicate key
+    /// IDs in a signatures array.
+    #[error("duplicate signing key id {0}")]
+    DuplicateKeyId(String),
+
     /// The operating system random source was unavailable.
     #[error("could not read random bytes: {0}")]
     Random(getrandom::Error),
