@@ -23,6 +23,11 @@ pub enum Error {
     /// `init` was pointed at a directory that already has contents.
     #[error("{0} is not empty; pass --force to re-initialize it and replace its keys")]
     NotEmpty(PathBuf),
+
+    /// A private-key directory already exists as a symlink, which would place
+    /// the keys somewhere this tool cannot vouch for.
+    #[error("{0} is a symlink; private keys must live in a real directory")]
+    KeyDirIsSymlink(PathBuf),
 }
 
 impl Error {

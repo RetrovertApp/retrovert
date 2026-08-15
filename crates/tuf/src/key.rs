@@ -21,7 +21,14 @@ pub const SCHEME: &str = "ed25519";
 /// Serializes to `{"keytype", "scheme", "keyval": {"public"}}` — exactly the
 /// field set `securesystemslib` hashes to derive a key ID, so
 /// [`PublicKey::key_id`] can canonicalize `self` directly.
+///
+/// That equivalence is why deserialization rejects unknown fields: a key
+/// carrying an extra field (`keyid_hash_algorithms`, say) would round-trip
+/// through this type with the field dropped, and [`PublicKey::key_id`] would
+/// then compute an ID that disagrees with the one the publisher declared.
+/// Failing to parse is the honest outcome.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PublicKey {
     /// Always [`KEY_TYPE`].
     pub keytype: String,
@@ -33,6 +40,7 @@ pub struct PublicKey {
 
 /// The inner `keyval` object of a TUF key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct KeyVal {
     /// Hex-encoded raw 32-byte Ed25519 public key.
     pub public: String,
@@ -139,6 +147,19 @@ mod tests {
             .as_bytes(),
         ));
         assert_eq!(public.key_id().unwrap(), expected);
+    }
+
+    #[test]
+    fn a_key_carrying_an_extra_field_is_rejected_rather_than_silently_trimmed() {
+        let public = key().public();
+        let json = format!(
+            r#"{{"keytype":"ed25519","scheme":"ed25519","keyval":{{"public":"{}"}},"keyid_hash_algorithms":["sha256"]}}"#,
+            public.keyval.public
+        );
+        // Accepting it would drop the extra field and derive a key ID that
+        // disagrees with the publisher's.
+        serde_json::from_str::<PublicKey>(&json)
+            .expect_err("unknown key fields change the key ID and must not be ignored");
     }
 
     #[test]

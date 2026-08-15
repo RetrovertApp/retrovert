@@ -15,6 +15,13 @@ use zeroize::Zeroizing;
 use crate::error::{Error, Result};
 
 /// A directory of PKCS#8 PEM private keys.
+///
+/// # Platform
+///
+/// Owner-only permissions are enforced on Unix. On other platforms the key
+/// files inherit whatever the parent directory's ACL grants, so the store's
+/// confidentiality is only as good as the directory it is created in — see
+/// [`KeyStore::write`].
 #[derive(Debug, Clone)]
 pub struct KeyStore {
     path: PathBuf,
@@ -54,22 +61,42 @@ impl KeyStore {
         dir.join(format!("{role}.pem"))
     }
 
-    /// Create the online and offline directories.
+    /// Create the store root and the online and offline directories, each
+    /// owner-only.
+    ///
+    /// Refuses a symlinked directory: re-initializing over a workspace someone
+    /// else prepared must not redirect private keys out of the restricted
+    /// directories this store creates.
     pub fn create_dirs(&self) -> Result<()> {
-        for dir in [self.online_dir(), self.offline_dir()] {
+        for dir in [self.path.clone(), self.online_dir(), self.offline_dir()] {
             std::fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
+            let meta = std::fs::symlink_metadata(&dir).map_err(|e| Error::io(&dir, e))?;
+            if meta.file_type().is_symlink() {
+                return Err(Error::KeyDirIsSymlink(dir));
+            }
             restrict(&dir, 0o700)?;
         }
         Ok(())
     }
 
-    /// Write `role`'s private key as PKCS#8 PEM.
+    /// Write `role`'s private key as PKCS#8 PEM, readable only by its owner.
+    ///
+    /// Any existing entry is unlinked rather than truncated, so a symlink left
+    /// at this path cannot redirect the key elsewhere and the owner-only mode
+    /// applies from the moment the file exists rather than after the secret has
+    /// already been written. See [`KeyStore`] for the non-Unix caveat.
     pub fn write(&self, role: RoleName, key: &KeyPair) -> Result<()> {
         let path = self.key_path(role);
         let pem = key.to_pkcs8_pem()?;
 
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(Error::io(&path, e)),
+        }
+
         let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
+        options.write(true).create_new(true);
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -78,7 +105,9 @@ impl KeyStore {
         let mut file = options.open(&path).map_err(|e| Error::io(&path, e))?;
         file.write_all(pem.as_bytes())
             .map_err(|e| Error::io(&path, e))?;
-        // An overwritten file keeps its old mode, so set it after the fact too.
+        // `mode` above is masked by the process umask, which can only clear
+        // bits; normalize so the stored mode does not depend on the caller's
+        // environment.
         restrict(&path, 0o600)
     }
 
@@ -99,6 +128,8 @@ fn restrict(path: &Path, mode: u32) -> Result<()> {
         .map_err(|e| Error::io(path, e))
 }
 
+/// No-op off Unix: there is no portable mode to set, and the caller is told so
+/// by [`KeyStore`]'s documentation and by the CLI's own output.
 #[cfg(not(unix))]
 fn restrict(_path: &Path, _mode: u32) -> Result<()> {
     Ok(())

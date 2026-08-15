@@ -1,4 +1,9 @@
 //! The TUF metadata model: the signed envelope and the four top-level roles.
+//!
+//! Every type here rejects unknown fields on deserialization. These are the
+//! shapes the publisher signs, so a document that carries more than the model
+//! describes is one whose signature covers bytes this crate cannot reproduce —
+//! parsing it into a smaller type and continuing would hide that.
 
 use std::collections::BTreeMap;
 
@@ -66,6 +71,7 @@ pub trait Role: Serialize {
 
 /// A single signature over a metadata file's canonical `signed` bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Signature {
     /// The signing key's TUF key ID.
     pub keyid: String,
@@ -75,6 +81,7 @@ pub struct Signature {
 
 /// A metadata file: a role payload plus the signatures over it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Signed<T> {
     /// Signatures over the canonical bytes of `signed`, ordered by key ID.
     pub signatures: Vec<Signature>,
@@ -115,6 +122,7 @@ impl<T: Role> Signed<T> {
 
 /// The keys and signature threshold authorized for a role.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RoleKeys {
     /// TUF key IDs authorized to sign for this role.
     pub keyids: Vec<String>,
@@ -124,6 +132,7 @@ pub struct RoleKeys {
 
 /// The `root` role: the trust anchor that delegates to all other roles.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Root {
     #[serde(rename = "_type")]
     type_: String,
@@ -178,6 +187,7 @@ impl Role for Root {
 
 /// A reference to another metadata file, as recorded by a parent role.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MetaFile {
     /// The referenced file's version.
     pub version: u64,
@@ -201,6 +211,7 @@ impl MetaFile {
 
 /// A distributable target file's metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TargetFile {
     /// The target's length in bytes.
     pub length: u64,
@@ -213,6 +224,7 @@ pub struct TargetFile {
 
 /// The `targets` role: the inventory of distributable files.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Targets {
     #[serde(rename = "_type")]
     type_: String,
@@ -245,6 +257,7 @@ impl Role for Targets {
 
 /// The `snapshot` role: pins the version of every targets metadata file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Snapshot {
     #[serde(rename = "_type")]
     type_: String,
@@ -277,6 +290,7 @@ impl Role for Snapshot {
 
 /// The `timestamp` role: pins the current snapshot version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Timestamp {
     #[serde(rename = "_type")]
     type_: String,

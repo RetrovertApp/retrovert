@@ -282,11 +282,72 @@ fn private_key_files_are_readable_only_by_their_owner() {
     let store = workspace.keys();
     let mode = |path: PathBuf| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
 
+    assert_eq!(mode(store.path().to_path_buf()), 0o700);
     assert_eq!(mode(store.online_dir()), 0o700);
     assert_eq!(mode(store.offline_dir()), 0o700);
     for role in RoleName::ALL {
         assert_eq!(mode(store.key_path(role)), 0o600, "{role} key is too open");
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn re_initializing_over_a_symlinked_key_path_does_not_write_the_key_through_it() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (dir, workspace) = seeded_workspace();
+    let store = workspace.keys();
+    let elsewhere = dir.path().join("elsewhere.pem");
+    let key_path = store.key_path(RoleName::Root);
+
+    std::fs::remove_file(&key_path).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, &key_path).unwrap();
+
+    init(&workspace, &seeded_keys(), now(), true).unwrap();
+
+    assert!(!elsewhere.exists(), "the key followed the symlink");
+    assert!(
+        !std::fs::symlink_metadata(&key_path)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        std::fs::metadata(&key_path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn re_initializing_over_a_world_readable_key_file_tightens_it() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (_dir, workspace) = seeded_workspace();
+    let key_path = workspace.keys().key_path(RoleName::Timestamp);
+    std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    init(&workspace, &seeded_keys(), now(), true).unwrap();
+
+    assert_eq!(
+        std::fs::metadata(&key_path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_key_directory_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let workspace = Workspace::new(dir.path().join("channel"));
+    let online = workspace.keys().online_dir();
+
+    std::fs::create_dir_all(online.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(dir.path().join("outside"), &online).unwrap();
+    std::fs::create_dir_all(dir.path().join("outside")).unwrap();
+
+    init(&workspace, &seeded_keys(), now(), true)
+        .expect_err("keys must not land outside the store");
 }
 
 /// Overwrite `file`'s signature with one made by `key`, leaving the declared

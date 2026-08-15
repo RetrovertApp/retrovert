@@ -61,5 +61,9 @@ fn run_init(args: &InitArgs) -> Result<()> {
         "keys:     {} — do not publish; the root key belongs in offline storage",
         workspace.keys().path().display()
     );
+    #[cfg(not(unix))]
+    println!(
+        "warning:  this platform has no owner-only enforcement; restrict that directory yourself"
+    );
     Ok(())
 }
