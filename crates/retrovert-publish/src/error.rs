@@ -39,6 +39,16 @@ pub enum Error {
         name: String,
     },
 
+    /// A metadata version counter cannot be advanced. Version numbers this
+    /// large never arise from real publishes; the metadata is corrupt.
+    #[error("{path}: version {version} cannot be incremented")]
+    VersionExhausted {
+        /// The metadata file carrying the version.
+        path: PathBuf,
+        /// The version that could not be advanced.
+        version: u64,
+    },
+
     /// `init` was pointed at a directory that already has contents.
     #[error("{0} is not empty; pass --force to re-initialize it and replace its keys")]
     NotEmpty(PathBuf),

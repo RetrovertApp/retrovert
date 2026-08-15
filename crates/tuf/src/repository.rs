@@ -114,6 +114,17 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
     temp.as_file()
         .sync_all()
         .map_err(|e| Error::io(temp.path(), e))?;
+    // `NamedTempFile` creates its file owner-only (0o600), and `persist` keeps
+    // that mode. Everything written here is published — it is what a client
+    // fetches from the channel's base URL — so open it up to the usual
+    // world-readable mode a web server or perms-preserving sync expects.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        temp.as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o644))
+            .map_err(|e| Error::io(temp.path(), e))?;
+    }
     let file = temp.persist(path).map_err(|e| Error::io(path, e.error))?;
     // Sync through the post-rename handle as a best-effort metadata flush on
     // platforms where `std` cannot open a directory for syncing.
@@ -209,6 +220,28 @@ mod tests {
             b"metadata"
         );
         assert!(planted.is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn published_files_are_world_readable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (_dir, channel) = channel();
+        channel
+            .write_metadata("timestamp.json", b"metadata")
+            .unwrap();
+        channel
+            .write_target("abc.manifest.json", b"target")
+            .unwrap();
+
+        for path in [
+            channel.metadata_dir().join("timestamp.json"),
+            channel.targets_dir().join("abc.manifest.json"),
+        ] {
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o644, "{} must be servable", path.display());
+        }
     }
 
     #[test]

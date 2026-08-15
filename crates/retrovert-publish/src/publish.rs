@@ -64,13 +64,16 @@ pub fn publish(
     let snapshot_path = metadata_dir.join(&published_names(RoleName::Snapshot, snapshot_pin)[0]);
     let current_snapshot: Signed<Snapshot> = read_signed(&snapshot_path)?;
 
-    let targets_version = pinned_version(
-        &current_snapshot.signed.meta,
+    let targets_version = next_version(
+        pinned_version(
+            &current_snapshot.signed.meta,
+            &snapshot_path,
+            RoleName::Targets,
+        )?,
         &snapshot_path,
-        RoleName::Targets,
-    )? + 1;
-    let snapshot_version = current_snapshot.signed.version + 1;
-    let timestamp_version = current_timestamp.signed.version + 1;
+    )?;
+    let snapshot_version = next_version(current_snapshot.signed.version, &snapshot_path)?;
+    let timestamp_version = next_version(current_timestamp.signed.version, &timestamp_path)?;
 
     let manifest_entry = TargetFile {
         length: manifest_bytes.len() as u64,
@@ -140,6 +143,16 @@ fn read_signed<T: DeserializeOwned>(path: &Path) -> Result<Signed<T>> {
         path: path.to_path_buf(),
         source: e,
     })
+}
+
+/// Advance a version counter read from `path`, refusing to wrap.
+fn next_version(version: u64, path: &Path) -> Result<u64> {
+    version
+        .checked_add(1)
+        .ok_or_else(|| Error::VersionExhausted {
+            path: path.to_path_buf(),
+            version,
+        })
 }
 
 fn pinned_version(meta: &BTreeMap<String, MetaFile>, path: &Path, child: RoleName) -> Result<u64> {

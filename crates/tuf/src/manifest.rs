@@ -49,17 +49,33 @@ pub struct Manifest {
 
 impl Manifest {
     /// Parse and validate manifest `bytes`.
+    ///
+    /// This is the validating entry point; deserializing a [`Manifest`]
+    /// directly bypasses these checks.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let manifest: Self =
             serde_json::from_slice(bytes).map_err(|e| Error::Manifest(e.to_string()))?;
         if manifest.revision.is_empty() {
             return Err(Error::Manifest("revision must not be empty".to_string()));
         }
+        let mut names = std::collections::BTreeSet::new();
         for artifact in &manifest.artifacts {
+            if !names.insert(artifact.name.as_str()) {
+                return Err(Error::Manifest(format!(
+                    "duplicate artifact name {:?}",
+                    artifact.name
+                )));
+            }
             if !is_hex_sha256(&artifact.sha256) {
                 return Err(Error::Manifest(format!(
                     "artifact {:?} sha256 must be 64 lowercase hex characters",
                     artifact.name
+                )));
+            }
+            if !is_clean_relative_path(&artifact.target) {
+                return Err(Error::Manifest(format!(
+                    "artifact {:?} target must be a clean relative path, got {:?}",
+                    artifact.name, artifact.target
                 )));
             }
         }
@@ -78,6 +94,16 @@ pub fn generation_id(bytes: &[u8]) -> String {
 
 fn is_hex_sha256(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// Whether `s` is a `/`-separated relative path that stays under the release's
+/// base: no absolute form, no `.`/`..` components, no empty components, and no
+/// backslashes that a Windows path resolver could reinterpret.
+fn is_clean_relative_path(s: &str) -> bool {
+    !s.is_empty()
+        && !s.contains('\\')
+        && s.split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
 #[cfg(test)]
@@ -129,6 +155,43 @@ mod tests {
             let err = Manifest::parse(&serde_json::to_vec(&json).unwrap()).unwrap_err();
             assert!(matches!(err, Error::Manifest(m) if m.contains("sha256")));
         }
+    }
+
+    #[test]
+    fn a_traversing_or_absolute_artifact_target_is_rejected() {
+        for bad in [
+            "",
+            "/etc/passwd",
+            "../outside",
+            "dir/../outside",
+            "dir/..",
+            "./app",
+            "dir//app",
+            "dir/",
+            "dir\\app",
+        ] {
+            let mut json = manifest_json();
+            json["artifacts"][0]["target"] = bad.into();
+            let err = Manifest::parse(&serde_json::to_vec(&json).unwrap()).unwrap_err();
+            assert!(
+                matches!(err, Error::Manifest(ref m) if m.contains("target")),
+                "{bad:?} must be rejected"
+            );
+        }
+
+        let mut json = manifest_json();
+        json["artifacts"][0]["target"] = "nested/dir/app.bin".into();
+        assert!(Manifest::parse(&serde_json::to_vec(&json).unwrap()).is_ok());
+    }
+
+    #[test]
+    fn duplicate_artifact_names_are_rejected() {
+        let mut json = manifest_json();
+        let artifact = json["artifacts"][0].clone();
+        json["artifacts"].as_array_mut().unwrap().push(artifact);
+
+        let err = Manifest::parse(&serde_json::to_vec(&json).unwrap()).unwrap_err();
+        assert!(matches!(err, Error::Manifest(m) if m.contains("duplicate")));
     }
 
     #[test]

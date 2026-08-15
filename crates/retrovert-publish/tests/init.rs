@@ -219,6 +219,51 @@ fn private_keys_are_split_by_trust_boundary_and_reload() {
 }
 
 #[test]
+fn force_re_init_clears_the_previous_channels_published_files() {
+    let (dir, workspace) = seeded_workspace();
+    let manifest_path = dir.path().join("manifest.json");
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec(&serde_json::json!({
+            "revision": "rev-1",
+            "artifacts": [],
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    retrovert_publish::publish(&workspace, &manifest_path, now()).unwrap();
+
+    init(&workspace, &seeded_keys(), now(), true).unwrap();
+
+    let names = |dir: PathBuf| -> BTreeSet<String> {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect()
+    };
+    assert_eq!(
+        names(metadata_dir(&workspace)),
+        BTreeSet::from(
+            [
+                "root.json",
+                "1.root.json",
+                "1.targets.json",
+                "1.snapshot.json",
+                "timestamp.json"
+            ]
+            .map(String::from)
+        ),
+        "metadata from the replaced channel must not survive"
+    );
+    assert_eq!(
+        names(workspace.channel().targets_dir()),
+        BTreeSet::new(),
+        "targets from the replaced channel must not survive"
+    );
+    refresh_with_sigstore_tuf(&workspace, now()).expect("the forced channel still validates");
+}
+
+#[test]
 fn a_non_empty_workspace_is_refused_unless_forced() {
     let dir = TempDir::new().unwrap();
     let workspace = Workspace::new(dir.path().join("channel"));

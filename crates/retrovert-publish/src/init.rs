@@ -90,6 +90,19 @@ pub fn init(
     }
 
     let channel = workspace.channel();
+    // A forced re-init replaces the channel wholesale. Clear the published
+    // directories first: metadata and targets from the previous channel are
+    // unreferenced by the new chain but would otherwise still be uploaded and
+    // fetchable by direct URL.
+    if force {
+        for dir in [channel.metadata_dir(), channel.targets_dir()] {
+            match std::fs::remove_dir_all(&dir) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(Error::io(dir, e)),
+            }
+        }
+    }
     channel.create_dirs()?;
 
     // Signing order is the publication order: a role is signed only after
