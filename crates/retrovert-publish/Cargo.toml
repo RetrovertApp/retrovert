@@ -16,14 +16,15 @@ retrovert-tuf.workspace = true
 
 clap.workspace = true
 jiff.workspace = true
+pollster.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sigstore-tuf.workspace = true
 thiserror.workspace = true
+ureq.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
-pollster.workspace = true
-sigstore-tuf.workspace = true
 tempfile.workspace = true
 
 [lints]

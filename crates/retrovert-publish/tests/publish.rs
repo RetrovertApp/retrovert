@@ -6,39 +6,16 @@
 
 mod common;
 
-use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use common::{copy_dir, now, refresh_with_sigstore_tuf, seeded_workspace};
+use common::{
+    copy_dir, manifest_bytes, now, refresh_with_sigstore_tuf, seeded_workspace, write_manifest,
+};
 use jiff::Timestamp;
 use retrovert_publish::{Workspace, publish};
 use retrovert_tuf::manifest;
 use sigstore_tuf::Updater;
 use tempfile::TempDir;
-
-fn manifest_bytes(revision: &str) -> Vec<u8> {
-    serde_json::to_vec_pretty(&serde_json::json!({
-        "schema": 1,
-        "version": 1,
-        "source_revision": revision,
-        "published": "2026-08-15T12:00:00Z",
-        "artifacts": [{
-            "name": "app",
-            "target": "linux-x86_64",
-            "path": format!("app-{revision}-linux-x86_64.tar.zst"),
-            "sha256": "ab".repeat(32),
-            "size": 42,
-            "revision": revision,
-        }],
-    }))
-    .unwrap()
-}
-
-fn write_manifest(dir: &Path, revision: &str) -> PathBuf {
-    let path = dir.join(format!("manifest-{revision}.json"));
-    std::fs::write(&path, manifest_bytes(revision)).unwrap();
-    path
-}
 
 /// Resolve and download the channel's manifest the way a client would.
 fn resolve_manifest(updater: &mut Updater, at: Timestamp) -> Vec<u8> {

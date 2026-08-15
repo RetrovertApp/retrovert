@@ -57,6 +57,49 @@ pub enum Error {
     /// the keys somewhere this tool cannot vouch for.
     #[error("{0} is a symlink; private keys must live in a real directory")]
     KeyDirIsSymlink(PathBuf),
+
+    /// A TUF client operation on a channel failed.
+    #[error(transparent)]
+    Client(#[from] sigstore_tuf::Error),
+
+    /// A request to the release host failed.
+    #[error("{method} {url}: {message}")]
+    Host {
+        /// The HTTP method used.
+        method: &'static str,
+        /// The URL requested.
+        url: String,
+        /// What went wrong, transport error or refused status.
+        message: String,
+    },
+
+    /// No credential is available for the release host.
+    #[error("no release-host token; set GH_TOKEN or GITHUB_TOKEN")]
+    MissingToken,
+
+    /// A repository reference was not of the form `owner/name`.
+    #[error("{0:?} is not an owner/name repository reference")]
+    MalformedRepo(String),
+
+    /// A release that should have been created moments ago is not there.
+    #[error("{repo} has no release tagged {tag}")]
+    MissingRelease {
+        /// The repository hosting the channel.
+        repo: String,
+        /// The release tag looked for.
+        tag: String,
+    },
+
+    /// A publish was stopped before its commit point, as asked.
+    #[error("stopped after {after} asset(s), before the channel's commit point")]
+    PublishStopped {
+        /// How many assets had been published when the run stopped.
+        after: usize,
+    },
+
+    /// A channel file has no file name to publish it under.
+    #[error("{0} has no file name to publish as")]
+    Unnameable(PathBuf),
 }
 
 impl Error {
