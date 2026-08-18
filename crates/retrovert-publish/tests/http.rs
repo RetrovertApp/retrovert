@@ -9,7 +9,7 @@
 
 mod common;
 
-use common::{Response, TestServer, now, seeded_workspace, write_manifest};
+use common::{TestServer, now, seeded_workspace, serve_channel, write_manifest};
 use retrovert_publish::{HttpChannel, verify};
 use retrovert_tuf::manifest;
 use sigstore_tuf::transport::Repository;
@@ -89,24 +89,7 @@ fn a_published_channel_resolves_its_generation_over_http() {
     let manifest_path = write_manifest(dir.path(), "rev-1");
     let published = retrovert_publish::publish(&workspace, &manifest_path, now()).unwrap();
 
-    // Serve the channel the way a release does: metadata and targets in one
-    // flat namespace, addressed by file name alone.
-    let channel = workspace.channel();
-    let server = TestServer::start(move |request| {
-        let name = request
-            .target
-            .trim_start_matches('/')
-            .split('?')
-            .next()
-            .unwrap_or_default()
-            .to_string();
-        for dir in [channel.metadata_dir(), channel.targets_dir()] {
-            if let Ok(bytes) = std::fs::read(dir.join(&name)) {
-                return Response::new(200, bytes);
-            }
-        }
-        Response::new(404, Vec::new())
-    });
+    let server = serve_channel(&workspace);
 
     let root = std::fs::read(workspace.channel().metadata_dir().join("root.json")).unwrap();
     let generation = verify::verify(server.base_url(), &root, now()).unwrap();

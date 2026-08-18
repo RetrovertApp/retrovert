@@ -6,7 +6,8 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use jiff::Timestamp;
 use retrovert_publish::{
-    GitHubReleases, KeySet, Repo, Result, Workspace, init, publish, remote, verify,
+    GitHubReleases, KeySet, Repo, Result, SignedRole, Workspace, init, publish, pull, remote,
+    resign, verify,
 };
 
 #[derive(Debug, Parser)]
@@ -23,6 +24,14 @@ enum Command {
 
     /// Publish a release-set manifest as the channel's next generation.
     Publish(PublishArgs),
+
+    /// Re-sign the channel's expiries with its online keys, naming the same
+    /// generation.
+    Resign(ResignArgs),
+
+    /// Replace a workspace's channel metadata with what the live channel
+    /// serves, verified against the root the workspace pins.
+    Pull(PullArgs),
 
     /// Fetch and verify a live channel's current generation over HTTPS.
     Verify(VerifyArgs),
@@ -82,6 +91,39 @@ struct PublishArgs {
 }
 
 #[derive(Debug, Args)]
+struct ResignArgs {
+    /// Workspace holding the channel and its online signing keys. The root key
+    /// takes no part in a re-sign and need not be present.
+    dir: PathBuf,
+
+    #[command(flatten)]
+    host: HostArgs,
+}
+
+/// Which channel to read, for a command that only reads and so needs no
+/// credential.
+#[derive(Debug, Args)]
+struct ChannelArgs {
+    /// GitHub repository hosting the channel.
+    #[arg(long, value_name = "OWNER/NAME")]
+    repo: Repo,
+
+    /// Channel name the releases are tagged under, e.g. `dev`.
+    #[arg(long, value_name = "NAME")]
+    channel: String,
+}
+
+#[derive(Debug, Args)]
+struct PullArgs {
+    /// Workspace whose channel metadata is replaced. Its `root.json` is what
+    /// the pulled chain has to verify against.
+    dir: PathBuf,
+
+    #[command(flatten)]
+    channel: ChannelArgs,
+}
+
+#[derive(Debug, Args)]
 struct VerifyArgs {
     /// The channel's base URL.
     base_url: String,
@@ -105,6 +147,8 @@ fn run(cli: &Cli) -> Result<()> {
     match &cli.command {
         Command::Init(args) => run_init(args),
         Command::Publish(args) => run_publish(args),
+        Command::Resign(args) => run_resign(args),
+        Command::Pull(args) => run_pull(args),
         Command::Verify(args) => run_verify(args),
     }
 }
@@ -140,6 +184,38 @@ fn run_publish(args: &PublishArgs) -> Result<()> {
     Ok(())
 }
 
+fn run_resign(args: &ResignArgs) -> Result<()> {
+    let workspace = Workspace::new(&args.dir);
+    let report = resign(&workspace, Timestamp::now())?;
+
+    println!("channel:  {}", workspace.channel().path().display());
+    for path in &report.written {
+        println!("  wrote   {}", path.display());
+    }
+    report_expiries(&report.roles);
+
+    if let Some((host, channel)) = args.host.resolve()? {
+        let mut pushed = Vec::new();
+        let outcome = remote::push_metadata(&host, channel, &report.written, &mut pushed);
+        report_push(host.repo(), channel, &pushed, &outcome);
+        outcome?;
+    }
+    Ok(())
+}
+
+fn run_pull(args: &PullArgs) -> Result<()> {
+    let workspace = Workspace::new(&args.dir);
+    let base_url = remote::base_url(&args.channel.repo, &args.channel.channel);
+    let report = pull(&workspace, &base_url, Timestamp::now())?;
+
+    println!("channel:  {base_url}");
+    for path in &report.written {
+        println!("  wrote   {}", path.display());
+    }
+    report_expiries(&report.roles);
+    Ok(())
+}
+
 fn run_init(args: &InitArgs) -> Result<()> {
     let workspace = Workspace::new(&args.dir);
     let keys = KeySet::generate()?;
@@ -161,7 +237,7 @@ fn run_init(args: &InitArgs) -> Result<()> {
 
     if let Some((host, channel)) = args.host.resolve()? {
         let mut pushed = Vec::new();
-        let outcome = remote::push_channel(&host, channel, &report.metadata, &mut pushed);
+        let outcome = remote::push_metadata(&host, channel, &report.metadata, &mut pushed);
         report_push(host.repo(), channel, &pushed, &outcome);
         outcome?;
     }
@@ -181,6 +257,17 @@ fn run_verify(args: &VerifyArgs) -> Result<()> {
     println!("artifacts: {}", generation.artifacts);
     println!("generation: {}", generation.generation_id);
     Ok(())
+}
+
+/// Report when each online role lapses. A re-sign's whole purpose is to move
+/// these, so a scheduled run's log has to show where they landed.
+fn report_expiries(roles: &[SignedRole]) {
+    for role in roles {
+        println!(
+            "{:<10} v{} expires {}",
+            role.role, role.version, role.expires
+        );
+    }
 }
 
 /// Report what reached the host, including on the runs that ended early — a

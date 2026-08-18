@@ -7,68 +7,15 @@
 
 mod common;
 
-use std::path::Path;
 use std::sync::Arc;
 
 use common::{
-    FakeHost, copy_dir, manifest_bytes, now, read, refresh_pushed_channel, seeded_channel,
-    write_manifest,
+    FakeHost, copy_dir, empty_channel, live_channel, manifest_bytes, metadata_tag, now,
+    push_generation, read, refresh_pushed_channel, resolve_pushed as resolve, write_manifest,
 };
-use jiff::Timestamp;
-use retrovert_publish::{Error, ReleaseHost, Workspace, publish, remote};
+use retrovert_publish::{Error, ReleaseHost, Workspace};
 use retrovert_tuf::manifest;
-use sigstore_tuf::Updater;
 use tempfile::TempDir;
-
-const CHANNEL: &str = "dev";
-
-fn metadata_tag() -> String {
-    remote::metadata_tag(CHANNEL)
-}
-
-/// Bring a channel live on a fresh host, with no generation published yet.
-fn empty_channel() -> (TempDir, Workspace, Arc<FakeHost>) {
-    let (dir, workspace, report) = seeded_channel();
-    let host = Arc::new(FakeHost::default());
-    remote::push_channel(&*host, CHANNEL, &report.metadata, &mut Vec::new()).unwrap();
-    (dir, workspace, host)
-}
-
-/// A live channel whose current generation is `revision`.
-fn live_channel(revision: &str) -> (TempDir, Workspace, Arc<FakeHost>) {
-    let (dir, workspace, host) = empty_channel();
-    push_generation(
-        &workspace,
-        &host,
-        &write_manifest(dir.path(), revision),
-        None,
-    )
-    .unwrap();
-    (dir, workspace, host)
-}
-
-fn push_generation(
-    workspace: &Workspace,
-    host: &Arc<FakeHost>,
-    manifest_path: &Path,
-    stop_after: Option<usize>,
-) -> Result<Vec<String>, Error> {
-    let report = publish(workspace, manifest_path, now())?;
-    let bytes = std::fs::read(manifest_path).unwrap();
-    let mut pushed = Vec::new();
-    remote::push_generation(&**host, CHANNEL, &report, &bytes, stop_after, &mut pushed)?;
-    Ok(pushed)
-}
-
-fn resolve(host: &Arc<FakeHost>, workspace: &Workspace, at: Timestamp) -> Vec<u8> {
-    let root = read(workspace, "root.json");
-    let mut updater = refresh_pushed_channel(host, &metadata_tag(), &root, at).unwrap();
-    fetch_manifest(&mut updater, at)
-}
-
-fn fetch_manifest(updater: &mut Updater, at: Timestamp) -> Vec<u8> {
-    pollster::block_on(updater.get_target(manifest::TARGET_PATH, at)).unwrap()
-}
 
 #[test]
 fn a_channel_is_brought_live_root_first_and_timestamp_last() {

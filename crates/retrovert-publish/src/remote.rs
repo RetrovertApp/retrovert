@@ -11,9 +11,12 @@
 //! `timestamp.json` transitively pins is published before it, so a run that dies
 //! anywhere earlier leaves a channel still naming the previous generation.
 //!
-//! The workspace, not the host, is the channel's source of truth. A run that
-//! stops short leaves unreferenced assets behind and the next publish supersedes
-//! them; nothing is ever un-published to recover.
+//! A workspace decides what it writes, but it does not own the channel: the
+//! scheduled re-sign job signs the same roles from CI, so a workspace that has
+//! not pulled is a version behind and would write different bytes over names
+//! the host already serves. Recovery is always forward — a run that stops short
+//! leaves unreferenced assets behind and the next publish supersedes them;
+//! nothing is ever un-published.
 
 use std::path::{Path, PathBuf};
 
@@ -48,12 +51,16 @@ pub fn base_url(repo: &Repo, channel: &str) -> String {
     )
 }
 
-/// Publish a freshly initialized channel's metadata, in the order `init` wrote
-/// it.
+/// Publish channel metadata onto the rolling metadata release, in the order it
+/// was written locally — which is the order that leaves `timestamp.json` last.
+///
+/// This is the whole of bringing a channel live and the whole of re-signing
+/// one; a generation additionally has assets of its own, and goes through
+/// [`push_generation`].
 ///
 /// Every asset that reaches the host is appended to `pushed`, so a run that ends
 /// in an error still says how far it got.
-pub fn push_channel(
+pub fn push_metadata(
     host: &dyn ReleaseHost,
     channel: &str,
     metadata: &[PathBuf],
@@ -69,7 +76,7 @@ pub fn push_channel(
 ///
 /// `stop_after` cuts the run off once that many assets are published, which is
 /// how the channel's failed-publish drill is run against the real host.
-/// `pushed` accumulates as in [`push_channel`].
+/// `pushed` accumulates as in [`push_metadata`].
 pub fn push_generation(
     host: &dyn ReleaseHost,
     channel: &str,

@@ -57,8 +57,10 @@ impl RoleName {
 }
 
 impl std::fmt::Display for RoleName {
+    /// Through `pad`, so a caller aligning a column of role names gets the
+    /// width it asked for.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+        f.pad(self.as_str())
     }
 }
 
@@ -362,6 +364,12 @@ mod tests {
         let expected: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: T = serde_json::from_value(expected.clone()).unwrap();
         assert_eq!(serde_json::to_value(parsed).unwrap(), expected);
+    }
+
+    #[test]
+    fn a_role_name_honours_the_width_it_is_formatted_with() {
+        assert_eq!(format!("{:<10}|", RoleName::Root), "root      |");
+        assert_eq!(format!("{}", RoleName::Timestamp), "timestamp");
     }
 
     #[test]

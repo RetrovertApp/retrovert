@@ -100,6 +100,16 @@ pub enum Error {
     /// A channel file has no file name to publish it under.
     #[error("{0} has no file name to publish as")]
     Unnameable(PathBuf),
+
+    /// A pull found no root in the workspace to authenticate the channel
+    /// against.
+    #[error("{0}: no root here; a pull verifies against the root the workspace already pins")]
+    MissingRoot(PathBuf),
+
+    /// The channel verified but did not yield a metadata file the pull has to
+    /// write.
+    #[error("the channel verified without producing {0}")]
+    IncompleteRefresh(String),
 }
 
 impl Error {

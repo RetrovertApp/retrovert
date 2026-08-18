@@ -18,9 +18,18 @@ pub fn published_names(role: RoleName, version: u64) -> Vec<String> {
     let unversioned = role.file_name();
     match role {
         RoleName::Timestamp => vec![unversioned],
-        RoleName::Root => vec![format!("{version}.{unversioned}"), unversioned],
-        RoleName::Targets | RoleName::Snapshot => vec![format!("{version}.{unversioned}")],
+        RoleName::Root => vec![versioned_name(role, version), unversioned],
+        RoleName::Targets | RoleName::Snapshot => vec![versioned_name(role, version)],
     }
+}
+
+/// The consistent-snapshot name a role's metadata carries at `version`.
+///
+/// Every role has one; [`published_names`] decides which are actually served,
+/// since timestamp is published unversioned and root under both names.
+#[must_use]
+pub fn versioned_name(role: RoleName, version: u64) -> String {
+    format!("{version}.{}", role.file_name())
 }
 
 /// The file name a target file is published under with consistent snapshots:
@@ -160,6 +169,22 @@ mod tests {
         assert_eq!(published_names(RoleName::Snapshot, 3), ["3.snapshot.json"]);
         assert_eq!(published_names(RoleName::Targets, 3), ["3.targets.json"]);
         assert_eq!(published_names(RoleName::Timestamp, 3), ["timestamp.json"]);
+    }
+
+    #[test]
+    fn every_role_has_a_versioned_name_whether_or_not_it_is_served_under_one() {
+        assert_eq!(versioned_name(RoleName::Timestamp, 3), "3.timestamp.json");
+        assert_eq!(versioned_name(RoleName::Snapshot, 3), "3.snapshot.json");
+        for role in RoleName::ALL {
+            // Timestamp is the one role served only under its bare name.
+            if role == RoleName::Timestamp {
+                continue;
+            }
+            assert!(
+                published_names(role, 7).contains(&versioned_name(role, 7)),
+                "{role} is served versioned, so the two must agree"
+            );
+        }
     }
 
     #[test]

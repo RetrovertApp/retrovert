@@ -21,4 +21,4 @@ pub use metadata::{
     MetaFile, Role, RoleKeys, RoleName, Root, Signature, Signed, Snapshot, TargetFile, Targets,
     Timestamp,
 };
-pub use repository::{Channel, published_names, target_published_name};
+pub use repository::{Channel, published_names, target_published_name, versioned_name};

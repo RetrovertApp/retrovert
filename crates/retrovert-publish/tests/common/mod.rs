@@ -13,7 +13,7 @@ use std::thread;
 
 use jiff::Timestamp;
 use retrovert_publish::{Error, InitReport, KeySet, ReleaseHost, Result, Workspace, init};
-use retrovert_tuf::KeyPair;
+use retrovert_tuf::{KeyPair, RoleName};
 use sigstore_tuf::transport::FetchFuture;
 use sigstore_tuf::{Repository, Updater};
 use tempfile::TempDir;
@@ -121,6 +121,61 @@ pub fn refresh_with_sigstore_tuf(
     let mut updater = Updater::new(ChannelRepository::new(workspace), &root)?;
     pollster::block_on(updater.refresh(at))?;
     Ok(updater)
+}
+
+/// A workspace holding only what the scheduled re-sign job is handed: the
+/// online keys and the root it authenticates the channel against.
+pub fn online_only_workspace(root: &[u8]) -> (TempDir, Workspace) {
+    let dir = TempDir::new().unwrap();
+    let workspace = Workspace::new(dir.path().join("job"));
+
+    let store = workspace.keys();
+    store.create_dirs().unwrap();
+    let keys = seeded_keys();
+    for role in [RoleName::Targets, RoleName::Snapshot, RoleName::Timestamp] {
+        store.write(role, keys.get(role)).unwrap();
+    }
+    std::fs::remove_dir_all(store.offline_dir()).unwrap();
+
+    let channel = workspace.channel();
+    channel.create_dirs().unwrap();
+    channel.write_metadata("root.json", root).unwrap();
+    (dir, workspace)
+}
+
+/// Serve named files out of `dirs`, first match wins — the flat asset namespace
+/// a release exposes, where a file's directory is not part of its name.
+///
+/// Names in `overrides` are answered from the map instead of from disk, which
+/// is how a test puts bytes on the wire that no key ever signed.
+pub fn serve_dirs(dirs: Vec<PathBuf>, overrides: BTreeMap<String, Vec<u8>>) -> TestServer {
+    TestServer::start(move |request| {
+        let name = request
+            .target
+            .trim_start_matches('/')
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        if let Some(bytes) = overrides.get(&name) {
+            return Response::new(200, bytes.clone());
+        }
+        for dir in &dirs {
+            if let Ok(bytes) = std::fs::read(dir.join(&name)) {
+                return Response::new(200, bytes);
+            }
+        }
+        Response::new(404, Vec::new())
+    })
+}
+
+/// Serve one workspace's channel, metadata and targets alike.
+pub fn serve_channel(workspace: &Workspace) -> TestServer {
+    let channel = workspace.channel();
+    serve_dirs(
+        vec![channel.metadata_dir(), channel.targets_dir()],
+        BTreeMap::new(),
+    )
 }
 
 /// A release-set manifest for `revision`, pretty-printed so the bytes a test
@@ -259,6 +314,66 @@ pub fn refresh_pushed_channel(
     let mut updater = Updater::new(HostedChannel::new(host, tag), root)?;
     pollster::block_on(updater.refresh(at))?;
     Ok(updater)
+}
+
+/// The channel name every test that involves a host publishes to.
+pub const CHANNEL: &str = "dev";
+
+pub fn metadata_tag() -> String {
+    retrovert_publish::remote::metadata_tag(CHANNEL)
+}
+
+/// Bring a channel live on a fresh host, with no generation published yet.
+pub fn empty_channel() -> (TempDir, Workspace, Arc<FakeHost>) {
+    let (dir, workspace, report) = seeded_channel();
+    let host = Arc::new(FakeHost::default());
+    retrovert_publish::remote::push_metadata(&*host, CHANNEL, &report.metadata, &mut Vec::new())
+        .unwrap();
+    (dir, workspace, host)
+}
+
+/// A live channel whose current generation is `revision`.
+pub fn live_channel(revision: &str) -> (TempDir, Workspace, Arc<FakeHost>) {
+    let (dir, workspace, host) = empty_channel();
+    push_generation(
+        &workspace,
+        &host,
+        &write_manifest(dir.path(), revision),
+        None,
+    )
+    .unwrap();
+    (dir, workspace, host)
+}
+
+pub fn push_generation(
+    workspace: &Workspace,
+    host: &Arc<FakeHost>,
+    manifest_path: &Path,
+    stop_after: Option<usize>,
+) -> Result<Vec<String>> {
+    let report = retrovert_publish::publish(workspace, manifest_path, now())?;
+    let bytes = std::fs::read(manifest_path).unwrap();
+    let mut pushed = Vec::new();
+    retrovert_publish::remote::push_generation(
+        &**host,
+        CHANNEL,
+        &report,
+        &bytes,
+        stop_after,
+        &mut pushed,
+    )?;
+    Ok(pushed)
+}
+
+/// Resolve the manifest a pushed channel currently names, as a client would.
+pub fn resolve_pushed(host: &Arc<FakeHost>, workspace: &Workspace, at: Timestamp) -> Vec<u8> {
+    let root = read(workspace, "root.json");
+    let mut updater = refresh_pushed_channel(host, &metadata_tag(), &root, at).unwrap();
+    fetch_manifest(&mut updater, at)
+}
+
+pub fn fetch_manifest(updater: &mut Updater, at: Timestamp) -> Vec<u8> {
+    pollster::block_on(updater.get_target(retrovert_tuf::manifest::TARGET_PATH, at)).unwrap()
 }
 
 /// One request a [`TestServer`] received.
