@@ -518,6 +518,7 @@ name = "retrovert-updater"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror",
  "ureq",

@@ -6,4 +6,6 @@
 //! plugins, Replay databases, anything else a manifest names — and when a
 //! generation goes live are the consumer's, decided after acquisition.
 
+pub mod policy;
+pub mod queue;
 pub mod transport;
