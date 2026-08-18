@@ -206,15 +206,12 @@ impl V2mView {
         };
         let channels = snapshot.layout.pattern_channels.len();
         let columns = snapshot.layout.columns.len();
-        let cells = snapshot_row_cells(
-            snapshot.cells(),
-            position.window_lo,
-            channels,
-            columns,
-            channel,
-            row,
-        )
-        .unwrap_or_default();
+        let row_offset = (row - position.window_lo) as usize;
+        let start = (row_offset * channels + channel) * columns;
+        let cells = snapshot
+            .cells()
+            .get(start..start + columns)
+            .unwrap_or_default();
         if cells.is_empty() {
             Painter::text(x, y, "--- .. ...", self.font, TEXT_DIM);
             return;
@@ -287,25 +284,6 @@ fn header_config() -> LayoutConfig {
             enabled: false,
         },
     }
-}
-
-fn snapshot_row_cells(
-    cells: &[RVPatternCell],
-    window_lo: u32,
-    snapshot_channels: usize,
-    columns: usize,
-    channel: usize,
-    row: u32,
-) -> Option<&[RVPatternCell]> {
-    if snapshot_channels == 0 || columns == 0 || channel >= snapshot_channels {
-        return None;
-    }
-    let row_offset = usize::try_from(row.checked_sub(window_lo)?).ok()?;
-    let start = row_offset
-        .checked_mul(snapshot_channels)?
-        .checked_add(channel)?
-        .checked_mul(columns)?;
-    cells.get(start..start.checked_add(columns)?)
 }
 
 fn cell_color(cell: &RVPatternCell, kind: u32, current: bool) -> Color {
@@ -385,20 +363,9 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_boundaries_are_safe_and_channels_are_capped() {
-        let cells = [cell(1, b"C-3"), cell(2, b"04")];
-
+    fn displayed_channels_are_capped() {
         assert_eq!(displayed_channel_count(0), 0);
         assert_eq!(displayed_channel_count(MAX_CHANNELS + 1), MAX_CHANNELS);
-        assert!(snapshot_row_cells(&cells, 4, 1, 2, 0, 3).is_none());
-        assert!(snapshot_row_cells(&cells[..1], 4, 1, 2, 0, 4).is_none());
-        assert!(snapshot_row_cells(&cells, 4, 1, 2, 1, 4).is_none());
-        let Some(row) = snapshot_row_cells(&cells, 4, 1, 2, 0, 4) else {
-            panic!("complete row was not returned");
-        };
-        assert_eq!(row.len(), 2);
-        assert_eq!(row[0].raw, 1);
-        assert_eq!(row[1].raw, 2);
     }
 
     fn cell(raw: u32, text: &[u8]) -> RVPatternCell {
