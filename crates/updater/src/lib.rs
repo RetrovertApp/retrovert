@@ -5,3 +5,5 @@
 //! beneath a caller-owned installation root. What the artifacts are — playback
 //! plugins, Replay databases, anything else a manifest names — and when a
 //! generation goes live are the consumer's, decided after acquisition.
+
+pub mod transport;

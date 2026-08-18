@@ -1,0 +1,213 @@
+//! The HTTP transport the rest of the crate is built on.
+//!
+//! Two ways to fetch. [`Transport::download`] is for artifacts: cached under
+//! the digest they are expected to have, resumable across interruptions, and
+//! pausable. [`Transport::get_bounded`] is for update metadata, which is small,
+//! mutable, and must never be cached or resumed.
+
+mod cache;
+mod digest;
+mod download;
+mod error;
+mod meta;
+
+use std::io::{self, Read};
+use std::path::PathBuf;
+use std::time::Duration;
+
+use ureq::Agent;
+
+pub use cache::Cache;
+pub use digest::ArtifactDigest;
+pub use download::{Chunk, Download, Failure, Snapshot, Status};
+pub use error::{Error, Result};
+
+const USER_AGENT: &str = concat!("retrovert-updater/", env!("CARGO_PKG_VERSION"));
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// A streaming artifact GET gets no global timeout — a large file on a slow
+/// link is not an error. Everything else is small enough to bound.
+const SHORT_TIMEOUT: Duration = Duration::from_secs(60);
+const MAX_REDIRECTS: u32 = 10;
+
+/// The agents every request from one transport goes through.
+struct Agents {
+    streaming: Agent,
+    short: Agent,
+}
+
+impl Agents {
+    fn new() -> Self {
+        Self {
+            streaming: agent(None),
+            short: agent(Some(SHORT_TIMEOUT)),
+        }
+    }
+}
+
+fn agent(global_timeout: Option<Duration>) -> Agent {
+    ureq::Agent::config_builder()
+        .max_redirects(MAX_REDIRECTS)
+        .user_agent(USER_AGENT)
+        .timeout_connect(Some(CONNECT_TIMEOUT))
+        .timeout_global(global_timeout)
+        // Status is inspected here, so a 4xx is a response rather than an error.
+        .http_status_as_error(false)
+        .build()
+        .into()
+}
+
+/// A response small enough to hold in memory.
+#[derive(Debug, Clone)]
+pub struct BoundedResponse {
+    /// The response body.
+    pub body: Vec<u8>,
+    /// The `Date` header verbatim, when the server sent one. The update check
+    /// takes its verification time from here rather than the local clock.
+    pub date: Option<String>,
+}
+
+/// HTTP transport over an instance-owned cache directory.
+pub struct Transport {
+    cache: Cache,
+    agents: Agents,
+}
+
+impl Transport {
+    /// A transport caching under `cache_dir`.
+    #[must_use]
+    pub fn new(cache_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            cache: Cache::new(cache_dir),
+            agents: Agents::new(),
+        }
+    }
+
+    /// The cache this transport downloads into.
+    #[must_use]
+    pub fn cache(&self) -> &Cache {
+        &self.cache
+    }
+
+    /// Start a transfer into the cache entry for `digest`.
+    ///
+    /// A complete entry is served from disk without a request.
+    pub fn download(
+        &self,
+        url: &str,
+        digest: &ArtifactDigest,
+        allow_resume: bool,
+    ) -> Result<Download> {
+        Download::start(&self.agents, self.cache.path_for(digest), url, allow_resume)
+    }
+
+    /// Start a transfer into `dest`, bypassing the cache.
+    pub fn download_to(
+        &self,
+        url: &str,
+        dest: impl Into<PathBuf>,
+        allow_resume: bool,
+    ) -> Result<Download> {
+        Download::start(&self.agents, dest.into(), url, allow_resume)
+    }
+
+    /// Fetch at most `limit` bytes into memory, cache-busted and unresumable.
+    ///
+    /// Fails with [`Error::TooLarge`] rather than reading a body past `limit`.
+    pub fn get_bounded(&self, url: &str, limit: usize) -> Result<BoundedResponse> {
+        let response = self
+            .agents
+            .short
+            .get(url)
+            .header("Cache-Control", "no-cache")
+            .header("Pragma", "no-cache")
+            .call()
+            .map_err(|e| Error::request(url, e))?;
+
+        let status = response.status().as_u16();
+        if !is_success(status) {
+            return Err(Error::Status {
+                url: url.to_string(),
+                status,
+            });
+        }
+        let date = header(&response, "date");
+        let body = read_bounded(&mut response.into_body().into_reader(), limit)
+            .map_err(|e| Error::request(url, e))?
+            .ok_or_else(|| Error::TooLarge {
+                url: url.to_string(),
+                limit,
+            })?;
+        Ok(BoundedResponse { body, date })
+    }
+
+    /// The length the server reports for `url`, when it reports one.
+    #[must_use]
+    pub fn url_size(&self, url: &str) -> Option<u64> {
+        url_size(&self.agents.short, url)
+    }
+}
+
+fn is_success(status: u16) -> bool {
+    (200..300).contains(&status)
+}
+
+fn url_size(agent: &Agent, url: &str) -> Option<u64> {
+    let response = agent.head(url).call().ok()?;
+    if !is_success(response.status().as_u16()) {
+        return None;
+    }
+    header(&response, "content-length")?.parse().ok()
+}
+
+fn header<T>(response: &ureq::http::Response<T>, name: &str) -> Option<String> {
+    response
+        .headers()
+        .get(name)?
+        .to_str()
+        .ok()
+        .map(str::to_string)
+}
+
+/// Read the whole source, or `None` if it holds more than `limit` bytes.
+fn read_bounded(reader: &mut impl Read, limit: usize) -> io::Result<Option<Vec<u8>>> {
+    let cap = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
+    let mut body = Vec::new();
+    reader.take(cap).read_to_end(&mut body)?;
+    Ok((body.len() <= limit).then_some(body))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn response_with(name: &str, value: &str) -> ureq::http::Response<()> {
+        ureq::http::Response::builder()
+            .header(name, value)
+            .body(())
+            .unwrap()
+    }
+
+    #[test]
+    fn a_header_is_read_by_any_case_of_its_name() {
+        let response = response_with("Date", "Sun, 06 Nov 1994 08:49:37 GMT");
+        assert_eq!(
+            header(&response, "date").as_deref(),
+            Some("Sun, 06 Nov 1994 08:49:37 GMT")
+        );
+        assert_eq!(header(&response, "etag"), None);
+    }
+
+    #[test]
+    fn a_body_at_the_limit_is_read_and_one_past_it_is_not() {
+        assert_eq!(
+            read_bounded(&mut b"12345".as_slice(), 5).unwrap(),
+            Some(b"12345".to_vec())
+        );
+        assert_eq!(read_bounded(&mut b"123456".as_slice(), 5).unwrap(), None);
+        assert_eq!(
+            read_bounded(&mut b"".as_slice(), 0).unwrap(),
+            Some(Vec::new())
+        );
+        assert_eq!(read_bounded(&mut b"1".as_slice(), 0).unwrap(), None);
+    }
+}
