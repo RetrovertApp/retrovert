@@ -22,6 +22,7 @@ pub struct Body {
     bytes: Arc<Vec<u8>>,
     piece: usize,
     delay: Duration,
+    header_delay: Duration,
     etag: String,
 }
 
@@ -32,6 +33,7 @@ impl Body {
             piece: bytes.len().max(1),
             bytes: Arc::new(bytes),
             delay: Duration::ZERO,
+            header_delay: Duration::ZERO,
             etag: etag.to_string(),
         }
     }
@@ -42,8 +44,20 @@ impl Body {
             bytes: Arc::new(bytes),
             piece: piece.max(1),
             delay,
+            header_delay: Duration::ZERO,
             etag: etag.to_string(),
         }
+    }
+
+    /// Hold back the response head for `header_delay` before serving as usual.
+    ///
+    /// A transfer is claimed by a worker — and so reads as in flight — before
+    /// the transport has a response to hand back. This widens that window on
+    /// demand, so a test can land a request against a transfer the queue has
+    /// no handle for yet.
+    pub fn stalling(mut self, header_delay: Duration) -> Self {
+        self.header_delay = header_delay;
+        self
     }
 }
 
@@ -149,6 +163,12 @@ fn serve(mut stream: TcpStream, state: &Arc<State>) {
         let _ = stream.write_all(head(404, "Not Found", 0, None, None).as_bytes());
         return;
     };
+
+    // Before anything is written back, so the client is still waiting on the
+    // response head rather than on the body.
+    if !body.header_delay.is_zero() {
+        thread::sleep(body.header_delay);
+    }
 
     let total = u64::try_from(body.bytes.len()).expect("a fixture body fits in a u64");
     // A stale `If-Range` means the partial bytes are no longer valid, so the

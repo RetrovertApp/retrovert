@@ -6,19 +6,18 @@
 //! an in-flight [`Priority::Background`] one, and the preempted entry
 //! auto-resumes once the higher-priority work settles.
 //!
-//! **Worker model.** The crate owns its threads: no executor is injected. A
-//! drain worker is armed lazily and **re-arms itself** while the queue has
-//! work, retiring when it drains. [`TransferQueue::queue`] and
-//! [`TransferQueue::resume`] arm under the same lock the worker retires under,
-//! so work arriving as a worker retires cannot be missed. A long transfer
-//! occupies its worker for the duration.
+//! **Worker model.** The crate owns its threads: no executor is injected.
+//! Workers are armed lazily up to [`Config::workers`] and re-arm themselves
+//! while the queue has work, retiring when it drains. Arming and retiring
+//! happen under the same lock, so work arriving as a worker retires cannot be
+//! missed. A worker holds one slot at a time.
 
 mod entry;
 mod validate;
 
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -26,7 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sha2::{Digest as _, Sha256};
 
 use crate::transport::{ArtifactDigest, Chunk, Download, Snapshot, Status, Transport};
-use entry::{Entry, UNKNOWN_TOTAL, auto_resume_preempted, next_pending, preempt_active_for_user};
+use entry::{Entry, UNKNOWN_TOTAL, auto_resume_preempted, next_pending, preempt_for_user};
 use validate::{CHUNK_SIZE, hash_prefix, validate};
 
 pub use entry::{Priority, State};
@@ -35,12 +34,11 @@ pub use validate::Failure;
 /// The most entries the queue holds at once.
 pub const QUEUE_MAX: usize = 32;
 
-/// Workers this revision runs.
+/// The most workers a queue drains with.
 ///
-/// The queue tracks a single active transfer, so draining with more than one
-/// worker is a design change rather than a copy; a larger [`Config::workers`]
-/// is pinned down to this.
-pub const MAX_WORKERS: usize = 1;
+/// A worker can only ever hold one slot, so more workers than there are slots
+/// buys nothing.
+pub const MAX_WORKERS: usize = QUEUE_MAX;
 
 /// Run at the top of every worker thread, given that worker's index.
 ///
@@ -51,8 +49,8 @@ pub type WorkerHook = Arc<dyn Fn(usize) + Send + Sync>;
 /// How a [`TransferQueue`] runs its workers.
 #[derive(Clone)]
 pub struct Config {
-    /// Workers draining the queue, capped at [`MAX_WORKERS`]. Zero reads as
-    /// one.
+    /// Workers draining the queue, and so transfers in flight at once. Clamped
+    /// to `1..=`[`MAX_WORKERS`].
     pub workers: usize,
     /// Run at the top of every worker thread.
     pub on_worker_start: Option<WorkerHook>,
@@ -61,7 +59,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            workers: MAX_WORKERS,
+            workers: 1,
             on_worker_start: None,
         }
     }
@@ -101,12 +99,17 @@ struct SlotRequest {
 /// The request is written once under the queue lock before the slot becomes
 /// eligible; the two published results are written by the worker and read by
 /// the caller under their own locks.
+///
+/// A slot reads Downloading from the claim, but the transfer only becomes
+/// reachable once the transport has started it. The request flags carry a
+/// cancel or a pause across that window.
 #[derive(Default)]
 struct Slot {
     in_use: AtomicBool,
     priority: AtomicI32,
     state: AtomicI32,
     cancel_requested: AtomicBool,
+    pause_requested: AtomicBool,
     queue_time_ms: AtomicI64,
     bytes_downloaded: AtomicI64,
     bytes_total: AtomicI64,
@@ -161,48 +164,65 @@ impl Slot {
 struct Shared {
     transport: Transport,
     slots: Vec<Slot>,
-    /// Serializes queue mutation against worker arm/retire, so work that
+    /// Serializes queue mutation against worker arm/claim/retire, so work that
     /// arrives as a worker retires still arms a fresh one.
     queue_lock: Mutex<WorkerState>,
     running: AtomicBool,
-    /// Index of the slot a worker currently owns, biased by one so `0` means
-    /// "no active slot".
-    active_slot: AtomicUsize,
-    active_download: Mutex<Option<Arc<Download>>>,
     workers: usize,
     on_worker_start: Option<WorkerHook>,
 }
 
-/// How many drain workers are armed, and their handles so `drop` can join
-/// them.
-#[derive(Default)]
+/// Which workers are armed, what each is transferring, and their handles so
+/// `drop` can join them.
+///
+/// The per-worker records live under the queue lock rather than beside it, so
+/// a caller deciding against the active set sees it as one consistent whole.
 struct WorkerState {
-    armed: usize,
+    armed: Vec<bool>,
+    active: Vec<Active>,
     handles: Vec<JoinHandle<()>>,
 }
 
-impl Shared {
-    fn active_index(&self) -> Option<usize> {
-        match self.active_slot.load(Ordering::Acquire) {
-            0 => None,
-            biased => Some(biased - 1),
+/// The slot one worker holds, and the transfer running in it.
+#[derive(Default)]
+struct Active {
+    slot: Option<usize>,
+    download: Option<Arc<Download>>,
+}
+
+impl WorkerState {
+    fn new(workers: usize) -> Self {
+        let mut active = Vec::with_capacity(workers);
+        active.resize_with(workers, Active::default);
+        Self {
+            armed: vec![false; workers],
+            active,
+            handles: Vec::new(),
         }
     }
 
-    fn set_active(&self, index: Option<usize>) {
-        self.active_slot
-            .store(index.map_or(0, |i| i + 1), Ordering::Release);
+    fn claimed(&self) -> Vec<usize> {
+        self.active.iter().filter_map(|a| a.slot).collect()
     }
 
-    fn active_download(&self) -> Option<Arc<Download>> {
-        lock(&self.active_download).clone()
-    }
-
-    /// Whether `index` is the slot a worker currently owns.
     fn is_active(&self, index: usize) -> bool {
-        self.active_index() == Some(index)
+        self.active.iter().any(|a| a.slot == Some(index))
     }
 
+    /// `None` until the worker holding `index` has started its transfer.
+    fn download_for(&self, index: usize) -> Option<Arc<Download>> {
+        self.active
+            .iter()
+            .find(|a| a.slot == Some(index))
+            .and_then(|a| a.download.clone())
+    }
+
+    fn has_idle_worker(&self) -> bool {
+        self.active.iter().any(|a| a.slot.is_none())
+    }
+}
+
+impl Shared {
     fn snapshot_all(&self) -> Vec<Entry> {
         self.slots.iter().map(Slot::snapshot).collect()
     }
@@ -238,25 +258,27 @@ fn now_ms() -> i64 {
 /// Called with `state` being the held queue lock, so this cannot race a
 /// worker's own retire.
 fn arm_workers(shared: &Arc<Shared>, state: &mut WorkerState) {
-    if state.armed >= shared.workers || !shared.running.load(Ordering::Acquire) {
+    if state.armed.iter().all(|&armed| armed) || !shared.running.load(Ordering::Acquire) {
         return;
     }
     if next_pending(&shared.snapshot_all()).is_none() {
         return;
     }
     reap(state);
-    while state.armed < shared.workers {
-        let index = state.armed;
+    for index in 0..shared.workers {
+        if state.armed[index] {
+            continue;
+        }
         let worker = Arc::clone(shared);
         let spawned = thread::Builder::new()
             .name(format!("retrovert-transfer-{index}"))
             .spawn(move || run_worker(&worker, index));
         let Ok(handle) = spawned else {
-            // Leave `armed` where it is so a later queue tries again.
+            // Leave this index unarmed so a later queue tries again.
             return;
         };
         state.handles.push(handle);
-        state.armed += 1;
+        state.armed[index] = true;
     }
 }
 
@@ -273,56 +295,93 @@ fn reap(state: &mut WorkerState) {
 
 /// One worker's whole life: the caller's start hook, then the drain.
 ///
-/// [`run_drain`] releases this worker's share of `armed` under the queue lock
-/// it retires with. An unwind skips that — the start hook is arbitrary caller
-/// code — so it is released here instead. Without this, `armed` never falls
-/// and the queue silently stops arming workers.
+/// An unwind skips the orderly retire in [`run_drain`] — the start hook is
+/// arbitrary caller code — leaving the worker armed forever and the queue
+/// unable to replace it, so it is released here instead.
 fn run_worker(shared: &Arc<Shared>, index: usize) {
     let drained = panic::catch_unwind(AssertUnwindSafe(|| {
         if let Some(hook) = shared.on_worker_start.as_ref() {
             hook(index);
         }
-        run_drain(shared);
+        run_drain(shared, index);
     }));
     if drained.is_err() {
-        shared.queue_lock().armed -= 1;
+        release_worker(shared, index);
+    }
+}
+
+/// Disarm a worker that unwound past its orderly retire, failing whatever slot
+/// it still held rather than leaving it claimed by a thread that is gone.
+fn release_worker(shared: &Arc<Shared>, index: usize) {
+    let released = {
+        let mut state = shared.queue_lock();
+        state.armed[index] = false;
+        let released = std::mem::take(&mut state.active[index]);
+        // Under the lock: the resume sweep writes back a whole-array snapshot,
+        // and would otherwise revert this to Downloading with no worker behind
+        // it.
+        if let Some(claimed) = released.slot {
+            publish_failure(&shared.slots[claimed], Failure::Panicked);
+            shared.slots[claimed].set_state(State::Failed);
+        }
+        released
+    };
+    drop(released);
+}
+
+/// Return every preempted entry to Pending, once no user-priority work is left
+/// to run. Call with the queue lock held.
+fn resume_preempted(shared: &Arc<Shared>) {
+    let mut snapshot = shared.snapshot_all();
+    auto_resume_preempted(&mut snapshot);
+    for (slot, entry) in shared.slots.iter().zip(snapshot.iter()) {
+        slot.apply(entry);
     }
 }
 
 /// Drain the queue in priority order until nothing is pending or the queue is
 /// shutting down.
-fn run_drain(shared: &Arc<Shared>) {
+fn run_drain(shared: &Arc<Shared>, worker: usize) {
     loop {
         if !shared.running.load(Ordering::Acquire) {
-            shared.queue_lock().armed -= 1;
+            shared.queue_lock().armed[worker] = false;
             return;
         }
 
         let index = {
             let mut state = shared.queue_lock();
+            // Resuming and deciding must be one lock hold. Split, the last
+            // user entry can be cancelled in between — after the sweep refused
+            // to resume on its account, before this worker retires on top of
+            // the preempted entry — and nothing sweeps again.
+            resume_preempted(shared);
             let Some(index) = next_pending(&shared.snapshot_all()) else {
                 // Retire under the lock: a `queue` racing this either lands
                 // before it, and the scan sees the work, or after it, and arms
                 // a fresh worker.
-                state.armed -= 1;
+                state.armed[worker] = false;
                 return;
             };
             // Claim the slot before releasing the lock. While it still reads
             // Pending, a cancel or a remove cannot tell it from unclaimed work:
             // a cancel would report success over a transfer that then runs
             // anyway, and a remove would free the slot for a `queue` to reuse
-            // under this worker's feet.
+            // under this worker's feet. Claiming it also keeps a second worker
+            // off it, since only a Pending slot is eligible.
             shared.slots[index].set_state(State::Downloading);
-            shared.set_active(Some(index));
+            state.active[worker].slot = Some(index);
+            // What the sweep released can be more than this worker can carry.
+            arm_workers(shared, &mut state);
             index
         };
 
         // A panicking transfer still has to settle its slot and drop the active
         // handles, or the claim above wedges the queue against every later
         // entry.
-        if panic::catch_unwind(AssertUnwindSafe(|| process(shared, index))).is_err() {
+        if panic::catch_unwind(AssertUnwindSafe(|| process(shared, worker, index))).is_err() {
             finish(
                 shared,
+                worker,
                 index,
                 None,
                 None,
@@ -330,32 +389,21 @@ fn run_drain(shared: &Arc<Shared>) {
                 Some(Failure::Panicked),
             );
         }
-
-        // A preempted entry auto-resumes once the higher-priority work has
-        // settled; an explicitly paused one stays paused.
-        {
-            let _state = shared.queue_lock();
-            let mut snapshot = shared.snapshot_all();
-            auto_resume_preempted(&mut snapshot);
-            for (slot, entry) in shared.slots.iter().zip(snapshot.iter()) {
-                slot.apply(entry);
-            }
-        }
     }
 }
 
 /// Run one slot's transfer to a terminal state.
-fn process(shared: &Arc<Shared>, index: usize) {
+fn process(shared: &Arc<Shared>, worker: usize, index: usize) {
     let slot = &shared.slots[index];
     let Some(request) = slot.request() else {
-        finish(shared, index, None, None, State::Failed, None);
+        finish(shared, worker, index, None, None, State::Failed, None);
         return;
     };
 
     // A cancel that landed in the window between the slot being claimed and the
     // transfer starting, so no request goes out for work already called off.
     if slot.cancel_requested.load(Ordering::Acquire) {
-        finish(shared, index, None, None, State::Cancelled, None);
+        finish(shared, worker, index, None, None, State::Cancelled, None);
         return;
     }
 
@@ -368,6 +416,7 @@ fn process(shared: &Arc<Shared>, index: usize) {
         slot.bytes_total.store(cached, Ordering::Release);
         finish(
             shared,
+            worker,
             index,
             Some(&request.digest),
             None,
@@ -385,6 +434,7 @@ fn process(shared: &Arc<Shared>, index: usize) {
         Err(error) => {
             finish(
                 shared,
+                worker,
                 index,
                 None,
                 None,
@@ -397,24 +447,38 @@ fn process(shared: &Arc<Shared>, index: usize) {
 
     // A cancel that arrived while the transport was being set up.
     if slot.cancel_requested.load(Ordering::Acquire) {
-        finish(shared, index, None, Some(download), State::Cancelled, None);
+        finish(
+            shared,
+            worker,
+            index,
+            None,
+            Some(download),
+            State::Cancelled,
+            None,
+        );
         return;
     }
 
-    *lock(&shared.active_download) = Some(Arc::clone(&download));
+    shared.queue_lock().active[worker].download = Some(Arc::clone(&download));
 
-    // Re-check: a cancel could have landed between the check above and the
-    // handle becoming visible to `cancel`.
-    if slot.cancel_requested.load(Ordering::Acquire) {
+    // Anything that landed before the handle became visible. A missed pause
+    // leaves the entry marked Preempted while it transfers on, holding the
+    // worker the user request was queued to get; a missed shutdown holds
+    // `drop` open for a whole body.
+    if slot.cancel_requested.load(Ordering::Acquire) || !shared.running.load(Ordering::Acquire) {
         download.request_cancel();
     }
+    if slot.pause_requested.load(Ordering::Acquire) {
+        download.request_pause();
+    }
 
-    transfer(shared, index, &request, &download, &cache_path);
+    transfer(shared, worker, index, &request, &download, &cache_path);
 }
 
 /// Stream a started transfer to a terminal state and settle its slot.
 fn transfer(
     shared: &Arc<Shared>,
+    worker: usize,
     index: usize,
     request: &SlotRequest,
     download: &Arc<Download>,
@@ -429,6 +493,7 @@ fn transfer(
         // after `finish` has released the transfer's own handle on it.
         finish(
             shared,
+            worker,
             index,
             None,
             Some(Arc::clone(download)),
@@ -481,6 +546,7 @@ fn transfer(
 
     finish(
         shared,
+        worker,
         index,
         Some(&request.digest),
         Some(Arc::clone(download)),
@@ -489,39 +555,62 @@ fn transfer(
     );
 }
 
-/// Settle a slot: release the active handles, publish the cached path or the
+/// Settle a slot: release the worker's claim, publish the cached path or the
 /// failure, and publish the terminal state.
 ///
-/// `Preempted` survives a `Paused` settle, so the auto-resume sweep still picks
-/// the slot up.
+/// All under the queue lock, so a cancel either lands before this and leaves
+/// `cancel_requested` for the settle to honour, or lands after and finds the
+/// slot inactive and refuses. `Preempted` survives a `Paused` settle, so the
+/// resume sweep still picks the slot up.
 fn finish(
     shared: &Arc<Shared>,
+    worker: usize,
     index: usize,
     digest: Option<&ArtifactDigest>,
     download: Option<Arc<Download>>,
     state: State,
     failure: Option<Failure>,
 ) {
-    // Clear the active handles under the queue lock before dropping the
-    // transfer, so a concurrent cancel / pause / preempt either completed its
-    // call already or observes the cleared slot.
-    {
-        let _guard = shared.queue_lock();
-        *lock(&shared.active_download) = None;
-        shared.set_active(None);
-    }
-    drop(download);
-
     let slot = &shared.slots[index];
-    if let (State::Complete, Some(digest)) = (state, digest) {
-        *lock(&slot.path) = Some(shared.transport.cache().path_for(digest));
-    } else if let Some(failure) = failure {
-        publish_failure(slot, failure);
-    }
+    let released = {
+        let mut guard = shared.queue_lock();
+        let released = std::mem::take(&mut guard.active[worker]);
+        // Spent with the attempt, so a resumed entry starts unpaused. A cancel
+        // outlives it — that ends the entry outright.
+        slot.pause_requested.store(false, Ordering::Release);
 
-    let already_preempted = slot.state() == State::Preempted && state == State::Paused;
-    if !already_preempted {
-        slot.set_state(state);
+        let settled = if slot.cancel_requested.load(Ordering::Acquire) {
+            State::Cancelled
+        } else {
+            state
+        };
+        // Before the state, so a caller that sees a terminal state can read
+        // the result behind it.
+        if let (State::Complete, Some(digest)) = (settled, digest) {
+            *lock(&slot.path) = Some(shared.transport.cache().path_for(digest));
+        } else if let Some(failure) = failure {
+            publish_failure(slot, failure);
+        }
+        if slot.state() != State::Preempted || settled != State::Paused {
+            slot.set_state(settled);
+        }
+        released
+    };
+    // After the lock: dropping the last handle on a transfer closes files.
+    drop(released);
+    drop(download);
+}
+
+/// Ask the transfer in `index` to stop at its next poll, keeping its partial
+/// file.
+///
+/// The flag goes down whether or not there is a handle to ask, so a worker
+/// that has claimed the slot but not yet started the transport still sees it.
+/// Call with the queue lock held.
+fn request_pause(slot: &Slot, state: &WorkerState, index: usize) {
+    slot.pause_requested.store(true, Ordering::Release);
+    if let Some(download) = state.download_for(index) {
+        download.request_pause();
     }
 }
 
@@ -552,15 +641,14 @@ impl TransferQueue {
     pub fn with_config(transport: Transport, config: Config) -> Self {
         let mut slots = Vec::with_capacity(QUEUE_MAX);
         slots.resize_with(QUEUE_MAX, Slot::default);
+        let workers = config.workers.clamp(1, MAX_WORKERS);
         Self {
             shared: Arc::new(Shared {
                 transport,
                 slots,
-                queue_lock: Mutex::new(WorkerState::default()),
+                queue_lock: Mutex::new(WorkerState::new(workers)),
                 running: AtomicBool::new(true),
-                active_slot: AtomicUsize::new(0),
-                active_download: Mutex::new(None),
-                workers: config.workers.clamp(1, MAX_WORKERS),
+                workers,
                 on_worker_start: config.on_worker_start,
             }),
         }
@@ -572,7 +660,7 @@ impl TransferQueue {
         &self.shared.transport
     }
 
-    /// Workers this queue drains with.
+    /// Workers this queue drains with, and so transfers it runs at once.
     #[must_use]
     pub fn workers(&self) -> usize {
         self.shared.workers
@@ -580,9 +668,9 @@ impl TransferQueue {
 
     /// Queue a transfer, or `None` when all [`QUEUE_MAX`] slots are in use.
     ///
-    /// A [`Priority::User`] request preempts an in-flight
-    /// [`Priority::Background`] one, which pauses and auto-resumes once the
-    /// higher-priority work settles.
+    /// With every worker busy, a [`Priority::User`] request preempts one
+    /// in-flight [`Priority::Background`] transfer, which pauses and
+    /// auto-resumes once user-priority work has drained.
     #[must_use]
     pub fn queue(&self, request: Request) -> Option<EntryId> {
         let shared = &self.shared;
@@ -604,21 +692,22 @@ impl TransferQueue {
         *lock(&slot.failure) = None;
         slot.priority.store(priority.code(), Ordering::Release);
         slot.cancel_requested.store(false, Ordering::Release);
+        slot.pause_requested.store(false, Ordering::Release);
         slot.bytes_downloaded.store(0, Ordering::Release);
         slot.bytes_total.store(UNKNOWN_TOTAL, Ordering::Release);
         slot.queue_time_ms.store(now_ms(), Ordering::Release);
         slot.set_state(State::Pending);
         slot.in_use.store(true, Ordering::Release);
 
-        if let Some(active_index) = shared.active_index() {
-            let active = &shared.slots[active_index];
-            let mut snapshot = active.snapshot();
-            if preempt_active_for_user(Some(&mut snapshot), priority) {
-                active.apply(&snapshot);
-                if let Some(download) = shared.active_download() {
-                    download.request_pause();
-                }
-            }
+        let mut snapshot = shared.snapshot_all();
+        if let Some(target) = preempt_for_user(
+            &mut snapshot,
+            &state.claimed(),
+            priority,
+            state.has_idle_worker(),
+        ) {
+            shared.slots[target].apply(&snapshot[target]);
+            request_pause(&shared.slots[target], &state, target);
         }
 
         arm_workers(shared, &mut state);
@@ -631,19 +720,20 @@ impl TransferQueue {
     pub fn cancel(&self, id: EntryId) -> bool {
         let shared = &self.shared;
         let slot = &shared.slots[id.0];
-        let _guard = shared.queue_lock();
+        let state = shared.queue_lock();
         let mut snapshot = slot.snapshot();
-        if !entry::cancel(&mut snapshot, shared.is_active(id.0)) {
+        if !entry::cancel(&mut snapshot, state.is_active(id.0)) {
             return false;
         }
         slot.apply(&snapshot);
-        // An active transfer is asked to stop. If it has no handle yet — still
-        // inside the transport's first request — the flag is picked up by the
-        // worker instead.
-        if snapshot.state == State::Downloading {
-            match shared.active_download() {
-                Some(download) => download.request_cancel(),
-                None => slot.cancel_requested.store(true, Ordering::Release),
+        // Gated on the claim, not the state: a preempted entry is still held.
+        // The flag is what makes the promise stick — the transfer may be past
+        // stopping, or have no handle yet, and either way its settle reads the
+        // flag and reports Cancelled.
+        if state.is_active(id.0) {
+            slot.cancel_requested.store(true, Ordering::Release);
+            if let Some(download) = state.download_for(id.0) {
+                download.request_cancel();
             }
         }
         true
@@ -651,16 +741,18 @@ impl TransferQueue {
 
     /// Pause an active transfer, keeping its partial file resumable. Returns
     /// whether the request applied.
+    ///
+    /// Unlike [`TransferQueue::cancel`], a pause that applies can still be
+    /// overtaken: a transfer past its last read settles [`State::Complete`],
+    /// having nothing left to pause.
     #[must_use]
     pub fn pause(&self, id: EntryId) -> bool {
         let shared = &self.shared;
-        let _guard = shared.queue_lock();
-        if !entry::pause(&shared.slots[id.0].snapshot(), shared.is_active(id.0)) {
+        let state = shared.queue_lock();
+        if !entry::pause(&shared.slots[id.0].snapshot(), state.is_active(id.0)) {
             return false;
         }
-        if let Some(download) = shared.active_download() {
-            download.request_pause();
-        }
+        request_pause(&shared.slots[id.0], &state, id.0);
         true
     }
 
@@ -684,9 +776,9 @@ impl TransferQueue {
     pub fn remove(&self, id: EntryId) -> bool {
         let shared = &self.shared;
         let slot = &shared.slots[id.0];
-        let _guard = shared.queue_lock();
+        let state = shared.queue_lock();
         let mut snapshot = slot.snapshot();
-        if !entry::remove(&mut snapshot) {
+        if !entry::remove(&mut snapshot, state.is_active(id.0)) {
             return false;
         }
         slot.apply(&snapshot);
@@ -726,19 +818,24 @@ impl TransferQueue {
 }
 
 impl Drop for TransferQueue {
-    /// Cancel the active transfer, stop the workers re-arming, and block until
-    /// every one of them has exited.
+    /// Cancel every active transfer, stop the workers re-arming, and block
+    /// until all of them have exited.
     ///
-    /// A cancel is observed between reads, so this waits out the read in
+    /// A cancel is observed between reads, so this waits out the reads in
     /// flight. The streaming agent bounds connecting but deliberately not the
     /// body — a large artifact on a slow link is not an error — so a peer that
     /// stops sending without closing holds the drop open.
     fn drop(&mut self) {
         self.shared.running.store(false, Ordering::Release);
-        if let Some(download) = self.shared.active_download() {
-            download.request_cancel();
-        }
-        let handles = std::mem::take(&mut self.shared.queue_lock().handles);
+        let handles = {
+            let mut state = self.shared.queue_lock();
+            for active in &state.active {
+                if let Some(download) = active.download.as_ref() {
+                    download.request_cancel();
+                }
+            }
+            std::mem::take(&mut state.handles)
+        };
         for handle in handles {
             let _ = handle.join();
         }
@@ -747,6 +844,8 @@ impl Drop for TransferQueue {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+
     use super::*;
 
     fn queue_over(dir: &std::path::Path, config: Config) -> TransferQueue {
@@ -754,9 +853,10 @@ mod tests {
     }
 
     #[test]
-    fn a_worker_count_above_the_cap_is_pinned_to_it() {
+    fn a_queue_drains_with_the_configured_worker_count() {
         let dir = tempfile::tempdir().unwrap();
-        for requested in [0, 1, MAX_WORKERS + 7] {
+        assert_eq!(queue_over(dir.path(), Config::default()).workers(), 1);
+        for requested in 1..=4 {
             let queue = queue_over(
                 dir.path(),
                 Config {
@@ -764,8 +864,59 @@ mod tests {
                     ..Config::default()
                 },
             );
-            assert_eq!(queue.workers(), MAX_WORKERS);
+            assert_eq!(queue.workers(), requested);
         }
+    }
+
+    #[test]
+    fn a_worker_count_outside_the_range_is_pinned_to_it() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            queue_over(
+                dir.path(),
+                Config {
+                    workers: 0,
+                    ..Config::default()
+                }
+            )
+            .workers(),
+            1
+        );
+        assert_eq!(
+            queue_over(
+                dir.path(),
+                Config {
+                    workers: MAX_WORKERS + 7,
+                    ..Config::default()
+                }
+            )
+            .workers(),
+            MAX_WORKERS
+        );
+    }
+
+    /// The window the settle closes: `cancel` promised a stop against a
+    /// transfer that then succeeded anyway.
+    #[test]
+    fn a_settle_reports_a_cancel_that_was_promised() {
+        let dir = tempfile::tempdir().unwrap();
+        let queue = queue_over(dir.path(), Config::default());
+        let shared = &queue.shared;
+        // No worker may run: this drives the settle by hand.
+        shared.running.store(false, Ordering::Release);
+
+        let id = queue.queue(request(0)).expect("a free slot");
+        shared.queue_lock().active[0].slot = Some(id.0);
+        shared.slots[id.0].set_state(State::Downloading);
+        shared.slots[id.0]
+            .cancel_requested
+            .store(true, Ordering::Release);
+
+        let digest = request(0).digest;
+        finish(shared, 0, id.0, Some(&digest), None, State::Complete, None);
+
+        assert_eq!(queue.state(id), State::Cancelled);
+        assert_eq!(queue.path(id), None);
     }
 
     #[test]

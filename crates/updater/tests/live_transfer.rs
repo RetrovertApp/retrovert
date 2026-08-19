@@ -23,15 +23,35 @@ const SMALL_SIZE: usize = 64 * 1024;
 const LARGE_SIZE: usize = 1024 * 1024;
 const LARGE_PIECE: usize = 16 * 1024;
 const LARGE_DELAY: Duration = Duration::from_millis(40);
+/// Served in pieces small enough that a slow body outlasts several large ones,
+/// so a preemption test cannot have its background work finish under it while
+/// a loaded runner keeps the test thread off the CPU.
+const SLOW_PIECE: usize = 4 * 1024;
 
 const SMALL: &str = "/small";
 const LARGE_A: &str = "/large-a";
 const LARGE_B: &str = "/large-b";
+const LARGE_C: &str = "/large-c";
+const LARGE_D: &str = "/large-d";
+const SLOW_A: &str = "/slow-a";
+const SLOW_B: &str = "/slow-b";
+const STALLED: &str = "/stalled";
+
+/// How long the stalled route sits on its response head. Long enough that a
+/// test reliably gets a request in while the queue holds no transfer handle,
+/// short enough not to dominate the suite.
+const HEADER_STALL: Duration = Duration::from_secs(1);
 
 /// Long enough to cover a whole throttled body several times over on a loaded
 /// CI runner.
 const TERMINAL_TIMEOUT: Duration = Duration::from_secs(60);
 const POLL: Duration = Duration::from_millis(20);
+
+/// Progress a yielding transfer may still make without having kept its worker.
+/// It drains the piece already in flight before its pause lands, which on a
+/// slow body is well under a hundredth of it; a transfer that really held its
+/// worker covers a quarter of its body over the same interval.
+const YIELD_SLACK: f32 = 0.05;
 
 /// Deterministic bytes that differ per route, so every route has its own
 /// digest.
@@ -67,6 +87,11 @@ struct Fixture {
     small: Vec<u8>,
     large_a: Vec<u8>,
     large_b: Vec<u8>,
+    large_c: Vec<u8>,
+    large_d: Vec<u8>,
+    slow_a: Vec<u8>,
+    slow_b: Vec<u8>,
+    stalled: Vec<u8>,
 }
 
 impl Fixture {
@@ -74,20 +99,41 @@ impl Fixture {
         Self::with_config(Config::default())
     }
 
+    fn with_workers(workers: usize) -> Self {
+        Self::with_config(Config {
+            workers,
+            ..Config::default()
+        })
+    }
+
     fn with_config(config: Config) -> Self {
         let small = body_bytes(SMALL_SIZE, 1);
         let large_a = body_bytes(LARGE_SIZE, 2);
         let large_b = body_bytes(LARGE_SIZE, 3);
+        let large_c = body_bytes(LARGE_SIZE, 4);
+        let large_d = body_bytes(LARGE_SIZE, 5);
+        let slow_a = body_bytes(LARGE_SIZE, 6);
+        let slow_b = body_bytes(LARGE_SIZE, 7);
+        let stalled = body_bytes(LARGE_SIZE, 8);
 
         let mut routes = HashMap::new();
         routes.insert(SMALL.to_string(), Body::instant(small.clone(), "\"small\""));
-        for (path, bytes, etag) in [
-            (LARGE_A, &large_a, "\"large-a\""),
-            (LARGE_B, &large_b, "\"large-b\""),
+        routes.insert(
+            STALLED.to_string(),
+            Body::throttled(stalled.clone(), "\"stalled\"", LARGE_PIECE, LARGE_DELAY)
+                .stalling(HEADER_STALL),
+        );
+        for (path, bytes, etag, piece) in [
+            (LARGE_A, &large_a, "\"large-a\"", LARGE_PIECE),
+            (LARGE_B, &large_b, "\"large-b\"", LARGE_PIECE),
+            (LARGE_C, &large_c, "\"large-c\"", LARGE_PIECE),
+            (LARGE_D, &large_d, "\"large-d\"", LARGE_PIECE),
+            (SLOW_A, &slow_a, "\"slow-a\"", SLOW_PIECE),
+            (SLOW_B, &slow_b, "\"slow-b\"", SLOW_PIECE),
         ] {
             routes.insert(
                 path.to_string(),
-                Body::throttled(bytes.clone(), etag, LARGE_PIECE, LARGE_DELAY),
+                Body::throttled(bytes.clone(), etag, piece, LARGE_DELAY),
             );
         }
 
@@ -100,6 +146,11 @@ impl Fixture {
             small,
             large_a,
             large_b,
+            large_c,
+            large_d,
+            slow_a,
+            slow_b,
+            stalled,
         }
     }
 
@@ -108,6 +159,11 @@ impl Fixture {
             SMALL => &self.small,
             LARGE_A => &self.large_a,
             LARGE_B => &self.large_b,
+            LARGE_C => &self.large_c,
+            LARGE_D => &self.large_d,
+            SLOW_A => &self.slow_a,
+            SLOW_B => &self.slow_b,
+            STALLED => &self.stalled,
             other => panic!("no fixture body for {other}"),
         }
     }
@@ -127,6 +183,26 @@ impl Fixture {
 
     fn wait_state(&self, id: EntryId, state: State) -> bool {
         wait_for(TERMINAL_TIMEOUT, || self.queue.state(id) == state)
+    }
+
+    /// How many of `ids` are in flight right now.
+    fn downloading(&self, ids: &[EntryId]) -> usize {
+        ids.iter()
+            .filter(|&&id| self.queue.state(id) == State::Downloading)
+            .count()
+    }
+
+    /// Each entry's progress. Progress only ever climbs, so comparing two of
+    /// these tells a test which transfers ran over an interval however
+    /// irregularly it was scheduled in between.
+    fn progress(&self, ids: &[EntryId]) -> Vec<f32> {
+        ids.iter().map(|&id| self.queue.progress(id)).collect()
+    }
+
+    /// Read back a completed transfer's cached bytes.
+    fn cached(&self, id: EntryId) -> Vec<u8> {
+        let path = self.queue.path(id).expect("a cached path");
+        std::fs::read(&path).expect("the cached file")
     }
 
     /// Spin until `id` settles, and report the state it settled in.
@@ -225,6 +301,148 @@ fn a_user_transfer_preempts_a_background_one() {
     );
 }
 
+/// Concurrency is the configured worker count, so two workers put two
+/// transfers in flight at the same instant.
+#[test]
+fn two_workers_transfer_two_artifacts_at_once() {
+    let fixture = Fixture::with_workers(2);
+    assert_eq!(fixture.queue.workers(), 2);
+
+    let a = fixture.queue(fixture.request(LARGE_A, Priority::Background));
+    let b = fixture.queue(fixture.request(LARGE_B, Priority::Background));
+    assert!(
+        wait_for(TERMINAL_TIMEOUT, || fixture.downloading(&[a, b]) == 2),
+        "both transfers must be in flight at once"
+    );
+
+    assert_eq!(fixture.wait_terminal(a), State::Complete);
+    assert_eq!(fixture.wait_terminal(b), State::Complete);
+    assert_eq!(fixture.cached(a), fixture.large_a);
+    assert_eq!(fixture.cached(b), fixture.large_b);
+}
+
+/// The default configuration is one worker, and one worker never runs two
+/// transfers at once however deep the queue is.
+#[test]
+fn one_worker_transfers_one_artifact_at_a_time() {
+    let fixture = Fixture::new();
+    assert_eq!(fixture.queue.workers(), 1);
+
+    let a = fixture.queue(fixture.request(LARGE_A, Priority::Background));
+    let b = fixture.queue(fixture.request(LARGE_B, Priority::Background));
+    assert!(wait_for(TERMINAL_TIMEOUT, || fixture.downloading(&[a, b]) == 1));
+
+    let both_complete = wait_for(TERMINAL_TIMEOUT, || {
+        assert!(
+            fixture.downloading(&[a, b]) <= 1,
+            "one worker must not run both transfers"
+        );
+        fixture.queue.state(a) == State::Complete && fixture.queue.state(b) == State::Complete
+    });
+    assert!(both_complete, "both transfers run, one after the other");
+}
+
+/// Preemption is decided against the queue: with every worker busy on
+/// background work, a queued user transfer displaces one of them, and the rest
+/// keep their workers.
+///
+/// The background work is served slowly enough that it cannot finish under the
+/// test, and the verdict is read off progress rather than off states caught at
+/// an instant, so a runner that leaves this thread off the CPU for a while
+/// cannot change the answer.
+#[test]
+fn a_user_transfer_preempts_one_of_several_background_ones() {
+    let fixture = Fixture::with_workers(2);
+    let a = fixture.queue(fixture.request(SLOW_A, Priority::Background));
+    let b = fixture.queue(fixture.request(SLOW_B, Priority::Background));
+    assert!(
+        wait_for(TERMINAL_TIMEOUT, || fixture.downloading(&[a, b]) == 2),
+        "both workers must be busy for the preemption to have a choice to make"
+    );
+
+    let user = fixture.queue(fixture.request(LARGE_C, Priority::User));
+    assert!(
+        fixture.wait_state(user, State::Downloading),
+        "the user transfer takes the worker a background one gave up"
+    );
+
+    // Sample only while the user transfer still holds its worker: the yielded
+    // transfer resumes the moment it settles, and would look like it had never
+    // stopped.
+    let before = fixture.progress(&[a, b]);
+    let mut during = before.clone();
+    while fixture.queue.state(user) == State::Downloading {
+        during = fixture.progress(&[a, b]);
+        std::thread::sleep(POLL);
+    }
+    assert_eq!(fixture.wait_terminal(user), State::Complete);
+
+    // One background transfer held its worker across the whole user transfer
+    // and covered a good quarter of its body; the other yielded and moved by
+    // no more than the piece already in flight.
+    let ran: Vec<bool> = (0..2)
+        .map(|i| during[i] - before[i] > YIELD_SLACK)
+        .collect();
+    assert_eq!(
+        ran.iter().filter(|&&r| r).count(),
+        1,
+        "one background transfer yields and one carries on, from {before:?} to {during:?}"
+    );
+
+    // The yielded one is not abandoned: it picks itself back up once the user
+    // work drains.
+    let yielded = if ran[0] { b } else { a };
+    assert!(
+        fixture.wait_state(yielded, State::Downloading),
+        "the preempted transfer resumes"
+    );
+}
+
+/// A preempted transfer waits for the queue's user work to drain, not for the
+/// one transfer that displaced it: with several workers, another may still be
+/// on user work when the first settles.
+#[test]
+fn preempted_transfers_resume_only_once_all_user_work_drains() {
+    let fixture = Fixture::with_workers(2);
+    let a = fixture.queue(fixture.request(SLOW_A, Priority::Background));
+    let b = fixture.queue(fixture.request(SLOW_B, Priority::Background));
+    assert!(wait_for(TERMINAL_TIMEOUT, || fixture.downloading(&[a, b]) == 2));
+
+    let first = fixture.queue(fixture.request(LARGE_C, Priority::User));
+    let second = fixture.queue(fixture.request(LARGE_D, Priority::User));
+    assert!(
+        wait_for(TERMINAL_TIMEOUT, || fixture.downloading(&[first, second])
+            == 2),
+        "both background transfers give up their workers to the user ones"
+    );
+
+    // Neither background transfer may advance while either user transfer is
+    // still going. Compared against one baseline rather than the previous
+    // sample, so a resume cannot slip between two polls unseen.
+    let idled = fixture.progress(&[a, b]);
+    let user_drained = wait_for(TERMINAL_TIMEOUT, || {
+        let outstanding = fixture.downloading(&[first, second]) > 0;
+        let moved = fixture.progress(&[a, b]);
+        assert!(
+            !outstanding || (0..2).all(|i| moved[i] - idled[i] <= YIELD_SLACK),
+            "a preempted transfer resumed while user work was still in flight"
+        );
+        !outstanding
+    });
+    assert!(user_drained);
+
+    assert_eq!(fixture.wait_terminal(first), State::Complete);
+    assert_eq!(fixture.wait_terminal(second), State::Complete);
+
+    // Both resume together once the last user transfer is out of the way.
+    assert!(
+        wait_for(TERMINAL_TIMEOUT, || fixture.downloading(&[a, b]) == 2),
+        "both preempted transfers resume, not just the one whose worker came free: {:?} {:?}",
+        fixture.queue.state(a),
+        fixture.queue.state(b)
+    );
+}
+
 #[test]
 fn pausing_preserves_progress_and_resuming_completes() {
     let fixture = Fixture::new();
@@ -246,6 +464,123 @@ fn pausing_preserves_progress_and_resuming_completes() {
         std::fs::read(&path).expect("the cached file"),
         fixture.large_a
     );
+}
+
+/// A slot reads Downloading from the moment a worker claims it, but the queue
+/// has nothing to ask until the transport has a response in hand. A request
+/// landing in that window is carried across it by the slot's flag rather than
+/// dropped against the missing handle — without which a transfer told to stop
+/// runs on to Complete.
+#[test]
+fn a_pause_that_lands_before_the_transfer_starts_is_not_lost() {
+    let fixture = Fixture::new();
+    let id = fixture.queue(fixture.request(STALLED, Priority::User));
+
+    // The claim publishes Downloading; the route then sits on its response
+    // head, so what follows has no transfer to act on.
+    assert!(fixture.wait_state(id, State::Downloading));
+    assert!(
+        fixture.queue.progress(id) <= 0.0,
+        "the route must still be stalling for this to test the window"
+    );
+    assert!(fixture.queue.pause(id));
+
+    assert!(
+        fixture.wait_state(id, State::Paused),
+        "the pause was dropped: the transfer settled {:?}",
+        fixture.queue.state(id)
+    );
+
+    assert!(fixture.queue.resume(id));
+    assert_eq!(fixture.wait_terminal(id), State::Complete);
+    assert_eq!(fixture.cached(id), fixture.stalled);
+}
+
+/// Nothing yields while a worker is free. The rule is decided from the live
+/// per-worker records rather than a flag a test hands in, so it is worth
+/// driving end to end: one worker busy, one idle, and a user request that
+/// takes the idle one without disturbing the background transfer.
+#[test]
+fn a_free_worker_takes_new_work_without_preempting_anything() {
+    let fixture = Fixture::with_workers(2);
+    let background = fixture.queue(fixture.request(SLOW_A, Priority::Background));
+    assert!(fixture.wait_state(background, State::Downloading));
+
+    // One worker is busy and the other is not, so this must not displace
+    // anything.
+    let before = fixture.progress(&[background]);
+    let user = fixture.queue(fixture.request(LARGE_C, Priority::User));
+    assert!(fixture.wait_state(user, State::Downloading));
+
+    let mut during = before.clone();
+    while fixture.queue.state(user) == State::Downloading {
+        assert_ne!(
+            fixture.queue.state(background),
+            State::Preempted,
+            "a free worker was available, so nothing should have yielded"
+        );
+        during = fixture.progress(&[background]);
+        std::thread::sleep(POLL);
+    }
+    assert_eq!(fixture.wait_terminal(user), State::Complete);
+
+    // It kept its worker throughout rather than merely avoiding the Preempted
+    // state.
+    assert!(
+        during[0] - before[0] > YIELD_SLACK,
+        "the background transfer ran alongside the user one, from {before:?} to {during:?}"
+    );
+}
+
+/// A cancel is a durable promise, including against an entry that has been
+/// marked to yield but whose worker has not physically paused it yet. The
+/// stalled route holds that window open.
+#[test]
+fn a_cancel_of_a_preempted_transfer_is_honoured() {
+    let fixture = Fixture::new();
+    let background = fixture.queue(fixture.request(STALLED, Priority::Background));
+    assert!(fixture.wait_state(background, State::Downloading));
+
+    // The single worker is busy, so this marks the background entry Preempted
+    // while that worker still owns the slot.
+    let user = fixture.queue(fixture.request(SMALL, Priority::User));
+    assert!(fixture.wait_state(background, State::Preempted));
+
+    assert!(fixture.queue.cancel(background));
+
+    // The verdict has to be read after the worker settles the slot, not off
+    // the state `cancel` itself published: the settle is what can overwrite a
+    // reported Cancelled with the preemption's Paused. With one worker, the
+    // user transfer cannot start until that settle has happened, so its
+    // completion is the signal that the window has closed.
+    assert_eq!(fixture.wait_terminal(user), State::Complete);
+    assert_eq!(
+        fixture.queue.state(background),
+        State::Cancelled,
+        "the cancel was reported as applied, so the settle must not undo it"
+    );
+}
+
+/// A preempted entry is still owned by its worker. Freeing the slot would let
+/// the next `queue` hand it out from under the transfer still running in it.
+#[test]
+fn a_preempted_entry_cannot_be_removed_from_under_its_worker() {
+    let fixture = Fixture::new();
+    let background = fixture.queue(fixture.request(STALLED, Priority::Background));
+    assert!(fixture.wait_state(background, State::Downloading));
+
+    let user = fixture.queue(fixture.request(SMALL, Priority::User));
+    assert!(fixture.wait_state(background, State::Preempted));
+
+    assert!(
+        !fixture.queue.remove(background),
+        "the slot is still claimed, so it must not be freed"
+    );
+    assert_eq!(fixture.wait_terminal(user), State::Complete);
+
+    // Released once the user work drains and the entry runs to completion.
+    assert_eq!(fixture.wait_terminal(background), State::Complete);
+    assert!(fixture.queue.remove(background));
 }
 
 #[test]

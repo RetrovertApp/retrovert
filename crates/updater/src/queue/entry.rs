@@ -143,16 +143,20 @@ pub(super) fn next_pending(entries: &[Entry]) -> Option<usize> {
 // State transitions. Each returns whether the request applied. `is_active` is
 // whether this entry is the one a drain worker currently owns.
 
-/// Cancel an entry. Pending / Paused / Preempted go straight to Cancelled; an
-/// active Downloading entry is asked to stop (still reported as handled). Any
-/// other state is a no-op.
+/// Cancel an entry. One a worker still holds is asked to stop and keeps its
+/// state for the settle to publish; anything else goes straight to Cancelled.
+/// Any other state is a no-op.
+///
+/// A preempted entry can be either: the worker owns it until its pause
+/// settles, and short-circuiting to Cancelled there loses the stop — the
+/// settle would publish `Paused` over it.
 pub(super) fn cancel(entry: &mut Entry, is_active: bool) -> bool {
     match entry.state {
+        State::Downloading | State::Preempted if is_active => true,
         State::Pending | State::Paused | State::Preempted => {
             entry.state = State::Cancelled;
             true
         }
-        State::Downloading if is_active => true,
         _ => false,
     }
 }
@@ -173,42 +177,92 @@ pub(super) fn resume(entry: &mut Entry) -> bool {
     }
 }
 
-/// Free an entry's slot. Refused while it is actively Downloading.
-pub(super) fn remove(entry: &mut Entry) -> bool {
-    if entry.state == State::Downloading {
+/// Free an entry's slot. Refused while a worker still holds it — freeing a
+/// preempted entry would hand the slot to `queue` from under the transfer
+/// still running in it.
+pub(super) fn remove(entry: &mut Entry, is_active: bool) -> bool {
+    if is_active || entry.state == State::Downloading {
         return false;
     }
     entry.in_use = false;
     true
 }
 
-/// Apply the preemption rule when a user entry is queued: if the currently
-/// active entry is a background transfer, mark it Preempted so it pauses and
-/// later auto-resumes. Returns whether a preemption was applied.
-pub(super) fn preempt_active_for_user(
-    active: Option<&mut Entry>,
+/// Pick one active background transfer to yield its worker, mark it Preempted
+/// so it pauses and later auto-resumes, and return its index.
+///
+/// Nothing yields while `idle_worker` — the queued entry runs on that worker
+/// instead — or when the entry queued is itself background. Otherwise the
+/// fewest bytes on disk goes, ties to whichever was queued last. Bytes rather
+/// than the fraction covered, which is unknown until the server declares a
+/// length.
+///
+/// `active` is the slots workers currently hold; indices outside `entries` are
+/// ignored.
+pub(super) fn preempt_for_user(
+    entries: &mut [Entry],
+    active: &[usize],
     queued_priority: Priority,
-) -> bool {
-    if queued_priority != Priority::User {
-        return false;
+    idle_worker: bool,
+) -> Option<usize> {
+    if queued_priority != Priority::User || idle_worker {
+        return None;
     }
-    match active {
-        Some(a) if a.priority == Priority::Background => {
-            a.state = State::Preempted;
-            true
+
+    let mut best: Option<usize> = None;
+    for &i in active {
+        let Some(candidate) = entries.get(i) else {
+            continue;
+        };
+        if !candidate.in_use
+            || candidate.state != State::Downloading
+            || candidate.priority != Priority::Background
+        {
+            continue;
         }
-        _ => false,
+        let take = match best {
+            None => true,
+            Some(b) => {
+                candidate.bytes_downloaded < entries[b].bytes_downloaded
+                    || (candidate.bytes_downloaded == entries[b].bytes_downloaded
+                        && candidate.queue_time_ms > entries[b].queue_time_ms)
+            }
+        };
+        if take {
+            best = Some(i);
+        }
     }
+
+    if let Some(i) = best {
+        entries[i].state = State::Preempted;
+    }
+    best
 }
 
-/// Auto-resume every preempted entry back to Pending. Run after an active
-/// transfer settles.
+/// Auto-resume every preempted entry back to Pending, once no user-priority
+/// work is left to run.
+///
+/// The wait is on the queue rather than on the transfer that just settled:
+/// with several workers another may still be on user work, and an entry
+/// resumed under it would only be preempted again.
 pub(super) fn auto_resume_preempted(entries: &mut [Entry]) {
+    if entries.iter().any(is_user_work_outstanding) {
+        return;
+    }
     for e in entries.iter_mut() {
         if e.in_use && e.state == State::Preempted {
             e.state = State::Pending;
         }
     }
+}
+
+/// Whether an entry is user-priority work still queued or in flight. An
+/// explicitly paused one is not: it waits on the caller, and background work
+/// must not wait with it.
+fn is_user_work_outstanding(entry: &Entry) -> bool {
+    entry.in_use
+        && entry.priority == Priority::User
+        && matches!(entry.state, State::Pending | State::Downloading)
 }
 
 #[cfg(test)]
@@ -284,9 +338,17 @@ mod tests {
         assert!(cancel(&mut paused, false));
         assert_eq!(paused.state, State::Cancelled);
 
+        // Preempted with its worker already gone: nothing left to stop.
         let mut preempted = e(Priority::Background, State::Preempted, 0);
         assert!(cancel(&mut preempted, false));
         assert_eq!(preempted.state, State::Cancelled);
+
+        // Preempted but still held: handled, and the state is left for the
+        // worker to settle. Going straight to Cancelled here would be
+        // published over by the settle's `Paused`.
+        let mut held = e(Priority::Background, State::Preempted, 0);
+        assert!(cancel(&mut held, true));
+        assert_eq!(held.state, State::Preempted);
 
         // Active downloading: handled, but the state is left for the worker to
         // settle.
@@ -325,39 +387,109 @@ mod tests {
     }
 
     #[test]
-    fn remove_is_refused_while_downloading() {
+    fn remove_is_refused_while_a_worker_holds_the_slot() {
         let mut downloading = e(Priority::User, State::Downloading, 0);
-        assert!(!remove(&mut downloading));
+        assert!(!remove(&mut downloading, true));
         assert!(downloading.in_use);
+
+        // Preempted still means held: the worker settles it later, and freeing
+        // the slot would let `queue` hand it out under the running transfer.
+        let mut preempted = e(Priority::Background, State::Preempted, 0);
+        assert!(!remove(&mut preempted, true));
+        assert!(preempted.in_use);
+
+        // Once the worker has let go, the same entry frees.
+        assert!(remove(&mut preempted, false));
+        assert!(!preempted.in_use);
+
         let mut complete = e(Priority::User, State::Complete, 0);
-        assert!(remove(&mut complete));
+        assert!(remove(&mut complete, false));
         assert!(!complete.in_use);
     }
 
     #[test]
-    fn a_user_transfer_preempts_an_active_background_one() {
-        let mut active = e(Priority::Background, State::Downloading, 0);
-        assert!(preempt_active_for_user(Some(&mut active), Priority::User));
-        assert_eq!(active.state, State::Preempted);
+    fn a_user_transfer_preempts_one_active_background_one() {
+        let mut entries = [
+            e(Priority::Background, State::Downloading, 0),
+            e(Priority::Background, State::Pending, 0),
+        ];
+        assert_eq!(
+            preempt_for_user(&mut entries, &[0], Priority::User, false),
+            Some(0)
+        );
+        assert_eq!(entries[0].state, State::Preempted);
+        assert_eq!(entries[1].state, State::Pending);
 
         // A queued background transfer does not preempt.
-        let mut background = e(Priority::Background, State::Downloading, 0);
-        assert!(!preempt_active_for_user(
-            Some(&mut background),
-            Priority::Background
-        ));
-        assert_eq!(background.state, State::Downloading);
+        let mut background = [e(Priority::Background, State::Downloading, 0)];
+        assert_eq!(
+            preempt_for_user(&mut background, &[0], Priority::Background, false),
+            None
+        );
+        assert_eq!(background[0].state, State::Downloading);
 
         // An active user transfer is not preempted by another user transfer.
-        let mut active_user = e(Priority::User, State::Downloading, 0);
-        assert!(!preempt_active_for_user(
-            Some(&mut active_user),
-            Priority::User
-        ));
-        assert_eq!(active_user.state, State::Downloading);
+        let mut active_user = [e(Priority::User, State::Downloading, 0)];
+        assert_eq!(
+            preempt_for_user(&mut active_user, &[0], Priority::User, false),
+            None
+        );
+        assert_eq!(active_user[0].state, State::Downloading);
 
         // Nothing active is nothing to preempt.
-        assert!(!preempt_active_for_user(None, Priority::User));
+        let mut idle = [e(Priority::Background, State::Pending, 0)];
+        assert_eq!(
+            preempt_for_user(&mut idle, &[], Priority::User, false),
+            None
+        );
+    }
+
+    /// Nothing yields while a worker is free: the queued user entry runs on
+    /// that worker, so pausing background work would cost progress for
+    /// nothing.
+    #[test]
+    fn a_free_worker_preempts_nothing() {
+        let mut entries = [e(Priority::Background, State::Downloading, 0)];
+        assert_eq!(
+            preempt_for_user(&mut entries, &[0], Priority::User, true),
+            None
+        );
+        assert_eq!(entries[0].state, State::Downloading);
+    }
+
+    /// With several workers busy on background work, the least-progressed
+    /// transfer is the one that yields.
+    #[test]
+    fn the_least_progressed_background_transfer_yields() {
+        let mut entries = [
+            e(Priority::Background, State::Downloading, 10),
+            e(Priority::Background, State::Downloading, 20),
+            e(Priority::User, State::Downloading, 30),
+        ];
+        entries[0].bytes_downloaded = 900;
+        entries[1].bytes_downloaded = 100;
+
+        assert_eq!(
+            preempt_for_user(&mut entries, &[0, 1, 2], Priority::User, false),
+            Some(1)
+        );
+        assert_eq!(entries[1].state, State::Preempted);
+        assert_eq!(entries[0].state, State::Downloading);
+        assert_eq!(entries[2].state, State::Downloading);
+    }
+
+    /// Equal progress is a tie the entry queued last loses: the older transfer
+    /// has been waiting longer to finish.
+    #[test]
+    fn equal_progress_yields_the_transfer_queued_last() {
+        let mut entries = [
+            e(Priority::Background, State::Downloading, 10),
+            e(Priority::Background, State::Downloading, 50),
+        ];
+        assert_eq!(
+            preempt_for_user(&mut entries, &[0, 1], Priority::User, false),
+            Some(1)
+        );
     }
 
     #[test]
@@ -372,6 +504,39 @@ mod tests {
         // Complete and explicitly-paused entries are untouched.
         assert_eq!(entries[1].state, State::Complete);
         assert_eq!(entries[2].state, State::Paused);
+    }
+
+    /// A preempted entry waits for the queue's user work to drain, not just
+    /// for the transfer that displaced it — with several workers, another may
+    /// still be on user work.
+    #[test]
+    fn auto_resume_waits_for_user_work_to_drain() {
+        for holding in [State::Pending, State::Downloading] {
+            let mut entries = [
+                e(Priority::Background, State::Preempted, 0),
+                e(Priority::User, holding, 0),
+            ];
+            auto_resume_preempted(&mut entries);
+            assert_eq!(entries[0].state, State::Preempted, "held by {holding:?}");
+        }
+
+        // A user entry the caller paused holds nothing back: it waits on the
+        // caller, not on a worker.
+        let mut entries = [
+            e(Priority::Background, State::Preempted, 0),
+            e(Priority::User, State::Paused, 0),
+        ];
+        auto_resume_preempted(&mut entries);
+        assert_eq!(entries[0].state, State::Pending);
+
+        // Neither does a freed slot that still reads as user work.
+        let mut freed = [
+            e(Priority::Background, State::Preempted, 0),
+            e(Priority::User, State::Pending, 0),
+        ];
+        freed[1].in_use = false;
+        auto_resume_preempted(&mut freed);
+        assert_eq!(freed[0].state, State::Pending);
     }
 
     #[test]
