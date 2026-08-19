@@ -832,3 +832,27 @@ fn a_partial_file_that_cannot_be_read_back_fails_and_is_evicted() {
     assert!(!cache.has_partial(&digest));
     assert!(!path.exists());
 }
+
+#[test]
+fn only_the_tls_only_bounded_get_refuses_a_plaintext_host() {
+    let body = body_bytes(SMALL_SIZE, 9);
+    let routes = HashMap::from([(
+        SMALL.to_string(),
+        Body::instant(body.clone(), "\"bounded\""),
+    )]);
+    let server = FixtureServer::start(routes);
+    let dir = tempfile::tempdir().expect("a scratch cache directory");
+    let transport = Transport::new(dir.path());
+    let url = server.url(SMALL);
+
+    assert_eq!(
+        transport.get_bounded(&url, SMALL_SIZE).unwrap().body,
+        body,
+        "the ordinary bounded GET speaks to whoever answers"
+    );
+    // Which is why the update check's clock uses the other one: an https base
+    // that redirects to a plaintext host must yield no Date at all, and the
+    // refusal has to come from the transport rather than from a scheme check on
+    // the URL the caller started with.
+    assert!(transport.get_bounded_over_tls(&url, SMALL_SIZE).is_err());
+}

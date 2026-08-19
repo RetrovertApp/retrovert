@@ -33,23 +33,27 @@ const MAX_REDIRECTS: u32 = 10;
 struct Agents {
     streaming: Agent,
     short: Agent,
+    /// Refuses a plaintext hop outright, redirects included.
+    tls_only: Agent,
 }
 
 impl Agents {
     fn new() -> Self {
         Self {
-            streaming: agent(None),
-            short: agent(Some(SHORT_TIMEOUT)),
+            streaming: agent(None, false),
+            short: agent(Some(SHORT_TIMEOUT), false),
+            tls_only: agent(Some(SHORT_TIMEOUT), true),
         }
     }
 }
 
-fn agent(global_timeout: Option<Duration>) -> Agent {
+fn agent(global_timeout: Option<Duration>, tls_only: bool) -> Agent {
     ureq::Agent::config_builder()
         .max_redirects(MAX_REDIRECTS)
         .user_agent(USER_AGENT)
         .timeout_connect(Some(CONNECT_TIMEOUT))
         .timeout_global(global_timeout)
+        .https_only(tls_only)
         // Status is inspected here, so a 4xx is a response rather than an error.
         .http_status_as_error(false)
         .build()
@@ -114,30 +118,16 @@ impl Transport {
     ///
     /// Fails with [`Error::TooLarge`] rather than reading a body past `limit`.
     pub fn get_bounded(&self, url: &str, limit: usize) -> Result<BoundedResponse> {
-        let response = self
-            .agents
-            .short
-            .get(url)
-            .header("Cache-Control", "no-cache")
-            .header("Pragma", "no-cache")
-            .call()
-            .map_err(|e| Error::request(url, e))?;
+        bounded(&self.agents.short, url, limit)
+    }
 
-        let status = response.status().as_u16();
-        if !is_success(status) {
-            return Err(Error::Status {
-                url: url.to_string(),
-                status,
-            });
-        }
-        let date = header(&response, "date");
-        let body = read_bounded(&mut response.into_body().into_reader(), limit)
-            .map_err(|e| Error::request(url, e))?
-            .ok_or_else(|| Error::TooLarge {
-                url: url.to_string(),
-                limit,
-            })?;
-        Ok(BoundedResponse { body, date })
+    /// As [`Transport::get_bounded`], but refusing to speak plaintext to
+    /// anyone, including whoever a redirect points at.
+    ///
+    /// For callers that trust the answer on the strength of the transport that
+    /// carried it rather than on a signature over it.
+    pub fn get_bounded_over_tls(&self, url: &str, limit: usize) -> Result<BoundedResponse> {
+        bounded(&self.agents.tls_only, url, limit)
     }
 
     /// The length the server reports for `url`, when it reports one.
@@ -149,6 +139,31 @@ impl Transport {
 
 fn is_success(status: u16) -> bool {
     (200..300).contains(&status)
+}
+
+fn bounded(agent: &Agent, url: &str, limit: usize) -> Result<BoundedResponse> {
+    let response = agent
+        .get(url)
+        .header("Cache-Control", "no-cache")
+        .header("Pragma", "no-cache")
+        .call()
+        .map_err(|e| Error::request(url, e))?;
+
+    let status = response.status().as_u16();
+    if !is_success(status) {
+        return Err(Error::Status {
+            url: url.to_string(),
+            status,
+        });
+    }
+    let date = header(&response, "date");
+    let body = read_bounded(&mut response.into_body().into_reader(), limit)
+        .map_err(|e| Error::request(url, e))?
+        .ok_or_else(|| Error::TooLarge {
+            url: url.to_string(),
+            limit,
+        })?;
+    Ok(BoundedResponse { body, date })
 }
 
 fn url_size(agent: &Agent, url: &str) -> Option<u64> {

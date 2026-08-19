@@ -9,7 +9,13 @@ repository.workspace = true
 
 [dependencies]
 hex.workspace = true
+jiff.workspace = true
+pollster.workspace = true
+retrovert-tuf.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
+sigstore-tuf.workspace = true
 thiserror.workspace = true
 ureq.workspace = true
 

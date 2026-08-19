@@ -8,6 +8,9 @@
 //! A body can be served in throttled pieces, which is what gives a test time to
 //! catch a transfer mid-flight and pause or preempt it.
 
+// Each test binary compiles this module separately and uses a different subset.
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
@@ -158,7 +161,7 @@ fn serve(mut stream: TcpStream, state: &Arc<State>) {
         return;
     };
 
-    let Some(body) = state.routes.get(&request.path) else {
+    let Some(body) = state.routes.get(route_of(&request.path)) else {
         record(state, &request, 404);
         let _ = stream.write_all(head(404, "Not Found", 0, None, None).as_bytes());
         return;
@@ -260,6 +263,12 @@ fn read_request(stream: &TcpStream) -> Option<Request> {
         range_from,
         if_range,
     })
+}
+
+/// The route a request target names, with any query dropped: a cache-busting
+/// key varies per request and would otherwise miss every route.
+fn route_of(target: &str) -> &str {
+    target.split('?').next().unwrap_or(target)
 }
 
 /// The first byte of a `bytes=N-` range, the only form the transport sends.
