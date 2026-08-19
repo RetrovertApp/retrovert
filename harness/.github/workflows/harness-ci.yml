@@ -26,7 +26,7 @@ jobs:
             target: linux-arm64
     runs-on: ${{ matrix.runner }}
     container:
-      image: ghcr.io/retrovertapp/retrovert-build-harness/toolchain-linux@sha256:TOOLCHAIN_DIGEST_PLACEHOLDER
+      image: ghcr.io/retrovertapp/retrovert-build-harness/toolchain-linux@sha256:e986ffdcca86524248bd58cb955bb88a84c603a5cbb35125c3437feb1c0c1dd2
       options: --privileged
       credentials:
         username: ${{ github.actor }}
