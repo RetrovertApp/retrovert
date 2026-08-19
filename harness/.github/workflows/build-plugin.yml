@@ -44,11 +44,32 @@ jobs:
         with:
           path: plugin
 
+      # github.job_workflow_sha is unreliable (observed empty), which would
+      # silently resolve the harness to its default branch instead of the
+      # tag the caller pinned. The run's referenced_workflows record is
+      # authoritative for both the sha and the tag.
+      - name: Resolve pinned harness revision
+        id: harness
+        shell: bash
+        run: |
+          Q='[.referenced_workflows[] | select(.path | contains("retrovert-build-harness/.github/workflows/build-plugin.yml"))][0]'
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.sha")
+          REF=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.ref")
+          case "$REF" in
+            refs/tags/v*) HV="h${REF#refs/tags/v}" ;;
+            *) HV="hdev-$(echo "$SHA" | cut -c1-8)" ;;
+          esac
+          echo "harness $REF ($SHA) -> $HV"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "hv=$HV" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Check out harness
         uses: actions/checkout@v4
         with:
           repository: RetrovertApp/retrovert-build-harness
-          ref: ${{ github.job_workflow_sha }}
+          ref: ${{ steps.harness.outputs.sha }}
           path: harness
 
       - name: Build, check, package, smoke
@@ -67,17 +88,10 @@ jobs:
           git config --global --add safe.directory "$PWD/plugin"
           NAME=$(python3.11 -c "import tomllib;print(tomllib.load(open('plugin/harness.toml','rb'))['plugin']['name'])")
           SHORTSHA=$(git -C plugin rev-parse --short HEAD)
-          case "$JOB_WORKFLOW_REF" in
-            */build-plugin.yml@refs/tags/v*) HV="h${JOB_WORKFLOW_REF##*@refs/tags/v}" ;;
-            *) HV="hdev-$(echo "$JOB_WORKFLOW_SHA" | cut -c1-8)" ;;
-          esac
+          HV="${{ steps.harness.outputs.hv }}"
           ASSET="${NAME}-${{ matrix.target }}-${SHORTSHA}-${HV}.tar.zst"
           cp "out/${NAME}-${{ matrix.target }}.tar.zst" "$ASSET"
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
-        env:
-          JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
-          JOB_WORKFLOW_SHA: ${{ github.job_workflow_sha }}
-
       - name: Attest build provenance
         if: inputs.upload && github.event_name != 'pull_request'
         uses: actions/attest-build-provenance@v2
@@ -105,11 +119,32 @@ jobs:
         with:
           path: plugin
 
+      # github.job_workflow_sha is unreliable (observed empty), which would
+      # silently resolve the harness to its default branch instead of the
+      # tag the caller pinned. The run's referenced_workflows record is
+      # authoritative for both the sha and the tag.
+      - name: Resolve pinned harness revision
+        id: harness
+        shell: bash
+        run: |
+          Q='[.referenced_workflows[] | select(.path | contains("retrovert-build-harness/.github/workflows/build-plugin.yml"))][0]'
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.sha")
+          REF=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.ref")
+          case "$REF" in
+            refs/tags/v*) HV="h${REF#refs/tags/v}" ;;
+            *) HV="hdev-$(echo "$SHA" | cut -c1-8)" ;;
+          esac
+          echo "harness $REF ($SHA) -> $HV"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "hv=$HV" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Check out harness
         uses: actions/checkout@v4
         with:
           repository: RetrovertApp/retrovert-build-harness
-          ref: ${{ github.job_workflow_sha }}
+          ref: ${{ steps.harness.outputs.sha }}
           path: harness
 
       - name: Set up Python
@@ -147,17 +182,10 @@ jobs:
         run: |
           NAME=$(python -c "import tomllib;print(tomllib.load(open('plugin/harness.toml','rb'))['plugin']['name'])")
           SHORTSHA=$(git -C plugin rev-parse --short HEAD)
-          case "$JOB_WORKFLOW_REF" in
-            */build-plugin.yml@refs/tags/v*) HV="h${JOB_WORKFLOW_REF##*@refs/tags/v}" ;;
-            *) HV="hdev-$(echo "$JOB_WORKFLOW_SHA" | cut -c1-8)" ;;
-          esac
+          HV="${{ steps.harness.outputs.hv }}"
           ASSET="${NAME}-windows-x86_64-${SHORTSHA}-${HV}.tar.zst"
           cp "out/${NAME}-windows-x86_64.tar.zst" "$ASSET"
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
-        env:
-          JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
-          JOB_WORKFLOW_SHA: ${{ github.job_workflow_sha }}
-
       - name: Attest build provenance
         if: inputs.upload && github.event_name != 'pull_request'
         uses: actions/attest-build-provenance@v2
