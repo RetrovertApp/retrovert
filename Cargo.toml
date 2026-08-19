@@ -4,6 +4,7 @@ members = [
     "crates/retrovert-player",
     "crates/retrovert-player-ui",
     "crates/retrovert-plugin-catalog",
+    "crates/retrovert-player-desktop",
 ]
 
 [workspace.package]
