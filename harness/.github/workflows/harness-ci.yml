@@ -85,7 +85,7 @@ jobs:
         shell: bash
         run: |
           choco install -y --no-progress --allow-downgrade llvm --version=18.1.8
-          choco install -y --no-progress ninja --version=1.12.1
+          choco install -y --no-progress --allow-downgrade ninja --version=1.12.1
           python -m pip install zstandard==0.23.0 pefile==2024.8.26
 
       - name: Set up MSVC environment
