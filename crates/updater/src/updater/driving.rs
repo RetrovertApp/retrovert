@@ -11,12 +11,11 @@ use std::time::{Duration, Instant};
 
 use jiff::Timestamp;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
 use super::{Phase, Priority, Updater, UpdaterConfig};
 use crate::channel::{Channel, Clock, NetworkTime, TrustStore};
-use crate::testing::fixture_channel::{FixtureChannel, artifact, manifest_of};
+use crate::testing::fixture_channel::{FixtureChannel, Payload, manifest_of, payload};
 use crate::testing::fixture_server::{Body, FixtureServer};
 use crate::updater::config::{ChannelConfig, WorkerConfig};
 
@@ -49,29 +48,8 @@ impl Clock for Unreachable {
     }
 }
 
-/// One artifact as the channel publishes it and the server serves it.
-struct Payload {
-    bytes: Vec<u8>,
-    path: String,
-    entry: Value,
-}
-
-fn payload(name: &str, seed: u8, len: u16) -> Payload {
-    let bytes: Vec<u8> = (0..len)
-        .map(|i| i.to_le_bytes()[0].wrapping_add(seed))
-        .collect();
-    let entry = artifact(
-        name,
-        Some(LINUX),
-        &hex::encode(Sha256::digest(&bytes)),
-        bytes.len() as u64,
-        REVISION,
-    );
-    Payload {
-        path: entry["path"].as_str().expect("a path").to_string(),
-        bytes,
-        entry,
-    }
+fn plugin(name: &str, seed: u8, len: u16) -> Payload {
+    payload(name, Some(LINUX), REVISION, seed, len)
 }
 
 /// A published channel, a host serving its artifacts, and the directories a
@@ -88,7 +66,7 @@ struct Fixture {
 impl Fixture {
     /// One 4 KiB artifact, served as fast as the socket takes it.
     fn instant() -> Self {
-        Self::new(vec![payload("spu", 1, 4096)], None, 1)
+        Self::new(vec![plugin("spu", 1, 4096)], None, 1)
     }
 
     /// Two 16 KiB artifacts served in 512-byte pieces, on two workers: slow
@@ -96,7 +74,7 @@ impl Fixture {
     /// does has to reach more than one of them.
     fn throttled() -> Self {
         Self::new(
-            vec![payload("spu", 1, 16 * 1024), payload("uade", 2, 16 * 1024)],
+            vec![plugin("spu", 1, 16 * 1024), plugin("uade", 2, 16 * 1024)],
             Some((512, Duration::from_millis(10))),
             2,
         )

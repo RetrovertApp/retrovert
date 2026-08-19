@@ -21,6 +21,7 @@ use retrovert_tuf::{
     Channel as TufChannel, KeyPair, MetaFile, PublicKey, RoleName, Root, Signed, Snapshot,
     TargetFile, Targets, policy, published_names, target_published_name,
 };
+use sha2::{Digest, Sha256};
 use sigstore_tuf::Error as TufError;
 use sigstore_tuf::transport::{FetchFuture, Repository};
 use tempfile::TempDir;
@@ -319,6 +320,36 @@ pub fn manifest_of(version: u64, revision: &str, artifacts: &[serde_json::Value]
         "artifacts": artifacts,
     }))
     .expect("manifest json")
+}
+
+/// One artifact as the channel publishes it and a host serves it.
+pub struct Payload {
+    /// The bytes the manifest entry names.
+    pub bytes: Vec<u8>,
+    /// Where they sit, relative to the artifact base URL.
+    pub path: String,
+    /// The manifest entry describing them.
+    pub entry: serde_json::Value,
+}
+
+/// A `len`-byte artifact whose contents follow from `seed`, entered into a
+/// manifest for `target` at `revision`.
+pub fn payload(name: &str, target: Option<&str>, revision: &str, seed: u8, len: u16) -> Payload {
+    let bytes: Vec<u8> = (0..len)
+        .map(|i| i.to_le_bytes()[0].wrapping_add(seed))
+        .collect();
+    let entry = artifact(
+        name,
+        target,
+        &hex::encode(Sha256::digest(&bytes)),
+        bytes.len() as u64,
+        revision,
+    );
+    Payload {
+        path: entry["path"].as_str().expect("a path").to_string(),
+        bytes,
+        entry,
+    }
 }
 
 /// One artifact entry; `target` absent matches every consumer.

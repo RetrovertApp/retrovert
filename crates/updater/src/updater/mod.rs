@@ -16,6 +16,8 @@ mod status;
 
 #[cfg(test)]
 mod driving;
+#[cfg(test)]
+mod round_trip;
 
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
