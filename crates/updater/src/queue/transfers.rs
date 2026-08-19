@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::queue::{Config, EntryId, Priority, QUEUE_MAX, Request, State, TransferQueue};
+use crate::queue::{Config, EntryId, Failure, Priority, QUEUE_MAX, Request, State, TransferQueue};
 use crate::testing::fixture_server::{Body, FixtureServer};
 use crate::transport::{ArtifactDigest, Transport};
 use sha2::{Digest, Sha256};
@@ -270,6 +270,32 @@ fn a_complete_cache_entry_is_served_without_a_request() {
     );
     // The cached entry reports as fully transferred, not as no progress at all.
     assert!((fixture.queue.progress(second) - 1.0).abs() < 1e-6);
+}
+
+/// A server free to stream forever must not be read to its end: once the body
+/// runs past the length the request named, the transfer is stopped where it
+/// stands and its bytes are discarded.
+#[test]
+fn a_body_running_past_the_named_length_is_stopped_mid_flight() {
+    let fixture = Fixture::new();
+    let expected = 4 * 1024_u64;
+    let mut request = fixture.request(LARGE_A, Priority::User);
+    request.expected_size = Some(expected);
+    let id = fixture.queue(request);
+
+    assert_eq!(fixture.wait_terminal(id), State::Failed);
+    let failure = fixture.queue.failure(id).expect("a recorded failure");
+    assert!(
+        matches!(failure, Failure::Oversize { expected: named, .. } if named == expected),
+        "{failure}"
+    );
+
+    // Nothing poisoned is left behind and nothing resumes onto refused bytes.
+    let cache = fixture.queue.transport().cache();
+    let digest = digest_of(&fixture.large_a);
+    assert!(!cache.is_complete(&digest));
+    assert!(!cache.has_partial(&digest));
+    assert!(!cache.path_for(&digest).exists());
 }
 
 #[test]

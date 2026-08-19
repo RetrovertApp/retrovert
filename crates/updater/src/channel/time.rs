@@ -1,9 +1,16 @@
 //! Where a check's verification time comes from.
 //!
-//! Never the local clock. An attacker who can move it can make expired
+//! Never the local clock alone. An attacker who can move it can make expired
 //! metadata look current, so the time comes from the network and the check
 //! runs against that or does not run at all. There is no fallback: a check
 //! with no network time reports itself skipped and leaves trust state alone.
+//!
+//! The network's word is clamped, not taken whole: whoever serves the `Date`
+//! header could otherwise move verification time backwards and present a
+//! stale — still signed, since expired — chain as current. A check therefore
+//! runs at the later of the reported time and the local clock, and the trust
+//! state additionally refuses a time earlier than one already verified
+//! against (see [`super::trust::Floor`]).
 
 use std::sync::Arc;
 
@@ -92,7 +99,11 @@ impl Clock for HostDate {
             .get_bounded_over_tls(&url, limit)
             .ok()?
             .date?;
-        Some(NetworkTime::new(parse_http_date(&date)?))
+        let reported = parse_http_date(&date)?;
+        Some(NetworkTime::new(verification_time(
+            reported,
+            Timestamp::now(),
+        )))
     }
 }
 
@@ -101,6 +112,17 @@ fn parse_http_date(value: &str) -> Option<Timestamp> {
     jiff::fmt::rfc2822::parse(value)
         .ok()
         .map(|zoned| zoned.timestamp())
+}
+
+/// The instant a check verifies against: the host's word, but never earlier
+/// than this machine's own clock says it is.
+///
+/// Taking the later of the two means backdating a check needs the local clock
+/// moved as well as the `Date` header. A local clock running fast can only
+/// fail closed — valid metadata reads as expired until the clock is fixed —
+/// never accept anything stale.
+fn verification_time(reported: Timestamp, local: Timestamp) -> Timestamp {
+    reported.max(local)
 }
 
 #[cfg(test)]
@@ -125,6 +147,18 @@ mod tests {
         ] {
             assert_eq!(parse_http_date(bad), None, "{bad:?} must not parse");
         }
+    }
+
+    #[test]
+    fn a_reported_time_is_never_earlier_than_the_local_clock() {
+        let earlier: Timestamp = "2026-08-15T12:00:00Z".parse().unwrap();
+        let later: Timestamp = "2026-08-15T13:00:00Z".parse().unwrap();
+
+        // A backdated Date is lifted to the local clock; an honest Date on a
+        // slow local clock is taken as reported.
+        assert_eq!(verification_time(earlier, later), later);
+        assert_eq!(verification_time(later, earlier), later);
+        assert_eq!(verification_time(later, later), later);
     }
 
     #[test]

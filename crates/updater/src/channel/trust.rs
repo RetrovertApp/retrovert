@@ -1,5 +1,5 @@
-//! Trust state: the newest verified metadata, and the version floor beneath
-//! which this client refuses to go back.
+//! Trust state: the newest verified metadata, and the version and time floors
+//! beneath which this client refuses to go back.
 //!
 //! Both halves live wherever the caller keeps durable state, never in a cache.
 //! A cache is evictable by definition, and a floor that can be evicted is not a
@@ -9,6 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use sigstore_tuf::{FileStore, MetadataStore, TrustedMetadataSet};
 
@@ -20,7 +21,8 @@ const FLOOR_FILE: &str = "floor.json";
 /// Where verified metadata is kept, relative to the trust directory.
 const METADATA_DIR: &str = "metadata";
 
-/// The lowest metadata version this client accepts for each top-level role.
+/// The lowest metadata version this client accepts for each top-level role,
+/// and the earliest verification time it accepts for any of them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Floor {
@@ -32,11 +34,19 @@ pub struct Floor {
     pub snapshot: u64,
     /// Floor for the `targets` role.
     pub targets: u64,
+    /// Unix seconds of the newest network time a completed check verified
+    /// against. A host whose `Date` walks backwards past this is refused —
+    /// the freeze it would enable is the version floor's blind spot.
+    ///
+    /// Only a check whose chain verified records one, so a lied-forward time
+    /// cannot poison it: metadata reads as expired at any instant past its
+    /// signed lifetime, and a check that fails records nothing.
+    pub verified_at: i64,
 }
 
 impl Floor {
-    /// The versions a completed refresh left trusted.
-    pub fn of(trusted: &TrustedMetadataSet) -> Result<Self> {
+    /// The versions a refresh completed at `verified_at` left trusted.
+    pub fn of(trusted: &TrustedMetadataSet, verified_at: Timestamp) -> Result<Self> {
         Ok(Self {
             root: trusted.root().version,
             timestamp: trusted
@@ -51,7 +61,21 @@ impl Floor {
                 .targets()
                 .ok_or(Error::IncompleteRefresh("targets"))?
                 .version,
+            verified_at: verified_at.as_second(),
         })
+    }
+
+    /// Refuse a verification time earlier than one a check has already
+    /// verified against. The same instant is admitted: two checks can share
+    /// a second.
+    pub fn admit_time(&self, offered: Timestamp) -> Result<()> {
+        if offered.as_second() < self.verified_at {
+            return Err(Error::TimeRollback {
+                floor: self.verified_at,
+                offered: offered.as_second(),
+            });
+        }
+        Ok(())
     }
 
     /// Refuse `offered` if any role in it sits below this floor.
@@ -84,6 +108,7 @@ impl Floor {
             timestamp: self.timestamp.max(offered.timestamp),
             snapshot: self.snapshot.max(offered.snapshot),
             targets: self.targets.max(offered.targets),
+            verified_at: self.verified_at.max(offered.verified_at),
         }
     }
 }
@@ -162,6 +187,7 @@ mod tests {
             timestamp,
             snapshot,
             targets,
+            ..Floor::default()
         }
     }
 
@@ -194,6 +220,51 @@ mod tests {
         let floor = versions(2, 9, 4, 4);
         assert_eq!(floor.raised_to(&versions(1, 4, 5, 4)), versions(2, 9, 5, 4));
         assert_eq!(floor.raised_to(&Floor::default()), floor);
+
+        // The verification time rises with the rest and never falls.
+        let timed = Floor {
+            verified_at: 100,
+            ..floor
+        };
+        assert_eq!(
+            timed
+                .raised_to(&Floor {
+                    verified_at: 50,
+                    ..floor
+                })
+                .verified_at,
+            100
+        );
+        assert_eq!(
+            timed
+                .raised_to(&Floor {
+                    verified_at: 150,
+                    ..floor
+                })
+                .verified_at,
+            150
+        );
+    }
+
+    #[test]
+    fn a_verification_time_below_the_floor_is_refused_and_the_same_second_is_not() {
+        let at = |s: &str| s.parse::<Timestamp>().unwrap();
+        let floor = Floor {
+            verified_at: at("2026-08-15T12:00:00Z").as_second(),
+            ..Floor::default()
+        };
+
+        assert!(floor.admit_time(at("2026-08-15T12:00:00Z")).is_ok());
+        assert!(floor.admit_time(at("2026-08-15T12:00:01Z")).is_ok());
+        let err = floor.admit_time(at("2026-08-15T11:59:59Z")).unwrap_err();
+        assert!(matches!(err, Error::TimeRollback { .. }), "{err}");
+
+        // A client that has never verified refuses nothing.
+        assert!(
+            Floor::default()
+                .admit_time(at("1971-01-01T00:00:00Z"))
+                .is_ok()
+        );
     }
 
     #[test]

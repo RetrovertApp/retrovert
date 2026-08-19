@@ -39,6 +39,24 @@ pub enum Error {
         digest: String,
     },
 
+    /// An artifact path could escape the generation directory or change the
+    /// meaning of the URL it is fetched under.
+    #[error("artifact {name:?} names path {path:?}, which is not a clean relative path")]
+    UnsafePath {
+        /// The artifact the plan named.
+        name: String,
+        /// The path as the plan spelled it.
+        path: String,
+    },
+
+    /// A generation id was not the digest of a manifest, so nothing may be
+    /// resolved or published under it.
+    #[error("{id:?} is not a generation id, which is the hex SHA-256 of a manifest")]
+    GenerationId {
+        /// The id as the plan spelled it.
+        id: String,
+    },
+
     /// Two artifacts of one plan want the same place in the generation.
     #[error("artifacts {first:?} and {second:?} both publish to {path:?}")]
     Collision {

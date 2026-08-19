@@ -30,8 +30,15 @@ const SHORT_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_REDIRECTS: u32 = 10;
 
 /// The agents every request from one transport goes through.
+///
+/// Each timeout profile exists in a plaintext-tolerant and a TLS-only form,
+/// chosen per request by the URL's own scheme: a request that starts on
+/// `https` must not be walked onto plaintext by a redirect, while an
+/// explicitly plaintext URL — a test fixture, an opted-in local mirror — keeps
+/// working.
 struct Agents {
     streaming: Agent,
+    streaming_tls: Agent,
     short: Agent,
     /// Refuses a plaintext hop outright, redirects included.
     tls_only: Agent,
@@ -41,10 +48,35 @@ impl Agents {
     fn new() -> Self {
         Self {
             streaming: agent(None, false),
+            streaming_tls: agent(None, true),
             short: agent(Some(SHORT_TIMEOUT), false),
             tls_only: agent(Some(SHORT_TIMEOUT), true),
         }
     }
+
+    /// The artifact-streaming agent for `url`, holding it to TLS when it
+    /// starts there.
+    fn streaming_for(&self, url: &str) -> &Agent {
+        if is_tls(url) {
+            &self.streaming_tls
+        } else {
+            &self.streaming
+        }
+    }
+
+    /// The bounded-fetch agent for `url`, holding it to TLS when it starts
+    /// there.
+    fn short_for(&self, url: &str) -> &Agent {
+        if is_tls(url) {
+            &self.tls_only
+        } else {
+            &self.short
+        }
+    }
+}
+
+fn is_tls(url: &str) -> bool {
+    url.starts_with("https://")
 }
 
 fn agent(global_timeout: Option<Duration>, tls_only: bool) -> Agent {
@@ -107,8 +139,9 @@ impl Transport {
     /// Fetch at most `limit` bytes into memory, cache-busted and unresumable.
     ///
     /// Fails with [`Error::TooLarge`] rather than reading a body past `limit`.
+    /// An `https` URL stays on TLS across redirects.
     pub fn get_bounded(&self, url: &str, limit: usize) -> Result<BoundedResponse> {
-        bounded(&self.agents.short, url, limit)
+        bounded(self.agents.short_for(url), url, limit)
     }
 
     /// As [`Transport::get_bounded`], but refusing to speak plaintext to
@@ -194,6 +227,16 @@ mod tests {
             Some("Sun, 06 Nov 1994 08:49:37 GMT")
         );
         assert_eq!(header(&response, "etag"), None);
+    }
+
+    #[test]
+    fn an_https_url_is_held_to_tls_and_a_plaintext_one_is_not() {
+        assert!(is_tls("https://host/artifact"));
+        assert!(!is_tls("http://host/artifact"));
+        // Scheme selection is what keeps an https transfer off plaintext
+        // redirect targets; anything else falls to the permissive agents and
+        // fails on its own merits.
+        assert!(!is_tls("ftp://host/artifact"));
     }
 
     #[test]

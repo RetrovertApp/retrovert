@@ -170,7 +170,12 @@ impl Download {
             return Err(Error::EmptyUrl);
         }
         let setup = prepare(agents, &path, url, allow_resume)?;
-        Ok(Self::from_setup(agents.streaming.clone(), path, url, setup))
+        Ok(Self::from_setup(
+            agents.streaming_for(url).clone(),
+            path,
+            url,
+            setup,
+        ))
     }
 
     fn from_setup(agent: Agent, path: PathBuf, url: &str, setup: Setup) -> Self {
@@ -484,7 +489,7 @@ fn open_resume(path: &Path) -> Option<Setup> {
 }
 
 fn start_fresh(agents: &Agents, path: &Path, url: &str) -> Result<Setup> {
-    let file_size = url_size(&agents.short, url);
+    let file_size = url_size(agents.short_for(url), url);
     check_disk_space(path, file_size)?;
     if let Some(parent) = path
         .parent()

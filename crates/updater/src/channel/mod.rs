@@ -3,8 +3,9 @@
 //!
 //! Nothing the host says is taken on its word. Bytes are accepted only once
 //! they chain to the root compiled into this binary, only against a time the
-//! network supplied, and only if the chain is no older than one this client has
-//! already trusted.
+//! network supplied — no earlier than the local clock, and no earlier than a
+//! time already verified against — and only if the chain is no older than one
+//! this client has already trusted.
 
 mod error;
 mod source;
@@ -117,6 +118,12 @@ impl Channel {
         };
         let at = now.timestamp();
 
+        // Before anything is fetched: a check dated earlier than one already
+        // verified against is a host walking its clock backwards, and nothing
+        // it serves at that time is worth reading.
+        let floor = self.trust.floor()?;
+        floor.admit_time(at)?;
+
         let mut updater = Updater::new(Shared(Arc::clone(&self.source)), &self.root)?
             .with_store(self.trust.metadata());
         pollster::block_on(updater.refresh(at))?;
@@ -124,8 +131,7 @@ impl Channel {
         // Recorded as soon as the chain verifies, before the target is
         // resolved: the floor is a statement about the metadata, and a manifest
         // that fails to parse does not make the chain that carried it older.
-        let offered = Floor::of(updater.trusted())?;
-        let floor = self.trust.floor()?;
+        let offered = Floor::of(updater.trusted(), at)?;
         floor.admit(&offered)?;
         self.trust.record(&floor.raised_to(&offered))?;
 

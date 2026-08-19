@@ -217,6 +217,36 @@ fn expired_metadata_is_refused() {
     assert_eq!(resolved.manifest.source_revision, "abc1234");
 }
 
+/// The version floor's blind spot is a host that keeps the current chain but
+/// walks its clock backwards; the time floor is what refuses that.
+#[test]
+fn a_check_dated_before_one_already_verified_is_refused() {
+    let trust = TempDir::new().unwrap();
+    let mut fixture = FixtureChannel::init(now());
+    fixture.publish(&manifest_bytes(1, "abc1234"), now());
+    channel_at(&fixture, trust.path(), now())
+        .authenticate()
+        .unwrap();
+
+    let err = channel_at(&fixture, trust.path(), days_on(-1))
+        .authenticate()
+        .unwrap_err();
+    assert!(matches!(err, Error::TimeRollback { .. }), "{err}");
+
+    // The same instant is not a rollback — two checks can share a second —
+    // and a later one moves the time floor with it.
+    channel_at(&fixture, trust.path(), now())
+        .authenticate()
+        .unwrap();
+    channel_at(&fixture, trust.path(), days_on(1))
+        .authenticate()
+        .unwrap();
+    let err = channel_at(&fixture, trust.path(), now())
+        .authenticate()
+        .unwrap_err();
+    assert!(matches!(err, Error::TimeRollback { .. }), "{err}");
+}
+
 #[test]
 fn metadata_not_signed_by_the_embedded_root_is_refused() {
     let trust = TempDir::new().unwrap();

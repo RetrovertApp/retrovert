@@ -153,16 +153,25 @@ pub fn generation_id(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
-fn is_hex_sha256(s: &str) -> bool {
+/// Whether `s` is a lowercase hex SHA-256: what [`Artifact::sha256`] and a
+/// generation id both are, and the only shape either may reach a filesystem or
+/// a URL in.
+#[must_use]
+pub fn is_hex_sha256(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// Whether `s` is a `/`-separated relative path that stays under the release's
-/// base: no absolute form, no `.`/`..` components, no empty components, and no
-/// backslashes that a Windows path resolver could reinterpret.
-fn is_clean_relative_path(s: &str) -> bool {
+/// base and means the same thing everywhere it is used: no absolute form, no
+/// `.`/`..` components, no empty components, no backslash or drive separator a
+/// Windows path resolver could reinterpret, and none of the characters that
+/// would change which URL it is fetched under (`?`, `#`, `%`, controls).
+#[must_use]
+pub fn is_clean_relative_path(s: &str) -> bool {
     !s.is_empty()
-        && !s.contains('\\')
+        && !s
+            .bytes()
+            .any(|b| b.is_ascii_control() || matches!(b, b'\\' | b':' | b'?' | b'#' | b'%'))
         && s.split('/')
             .all(|part| !part.is_empty() && part != "." && part != "..")
 }
@@ -357,6 +366,14 @@ mod tests {
             "dir//app",
             "dir/",
             "dir\\app",
+            // A drive separator makes the whole thing absolute on Windows.
+            "c:/evil",
+            "dir/c:evil",
+            // These change which URL the artifact is fetched under.
+            "app?x=1",
+            "app#frag",
+            "app%2e%2e",
+            "app\nname",
         ] {
             let mut json = manifest_json();
             json["artifacts"][0]["path"] = bad.into();

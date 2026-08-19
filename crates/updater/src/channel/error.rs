@@ -25,6 +25,20 @@ pub enum Error {
         offered: u64,
     },
 
+    /// The channel dated the check earlier than a time this client has
+    /// already verified against — the freeze a lied-backwards `Date` header
+    /// would otherwise enable.
+    #[error(
+        "network time went backwards: offered {offered}, \
+         already verified against {floor} (unix seconds)"
+    )]
+    TimeRollback {
+        /// The newest verification time trust state has recorded.
+        floor: i64,
+        /// The earlier time the channel offered.
+        offered: i64,
+    },
+
     /// Trust state could not be read or written.
     #[error("{path}: {source}")]
     Trust {

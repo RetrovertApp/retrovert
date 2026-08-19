@@ -43,6 +43,16 @@ pub enum Failure {
         actual: u64,
     },
 
+    /// The body ran past the length the request named and was stopped
+    /// mid-flight rather than read to whatever end the server picked.
+    #[error("exceeded the {expected} bytes the request named; stopped at {actual}")]
+    Oversize {
+        /// The length the request named.
+        expected: u64,
+        /// The bytes on disk when the transfer was stopped.
+        actual: u64,
+    },
+
     /// The completed file could not be read back for verification.
     #[error("the completed file could not be re-read for verification")]
     Unreadable,

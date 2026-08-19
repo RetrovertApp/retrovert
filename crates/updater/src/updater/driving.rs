@@ -208,6 +208,39 @@ fn wait_for_progress(updater: &Updater) -> f32 {
 }
 
 #[test]
+fn a_plaintext_artifact_base_is_refused_at_construction() {
+    let fixture = Fixture::instant();
+    let mut config = fixture.config(false);
+    // The fixture host is plaintext, which `Updater::over` tolerates as a
+    // test seam; the production constructor must not.
+    assert!(config.channel.artifact_base_url.starts_with("http://"));
+
+    let err = Updater::new(config.clone()).unwrap_err();
+    assert!(matches!(err, super::Error::Insecure(_)), "{err}");
+
+    // With the artifact base secured, the metadata base is checked the same
+    // way further down the constructor.
+    config.channel.artifact_base_url = "https://example.invalid/artifacts".to_string();
+    config.channel.metadata_base_url = "http://example.invalid/metadata".to_string();
+    let err = Updater::new(config).unwrap_err();
+    assert!(matches!(err, super::Error::Channel(_)), "{err}");
+}
+
+#[test]
+fn trust_state_inside_the_cache_is_refused_at_construction() {
+    let fixture = Fixture::instant();
+    let mut config = fixture.config(false);
+    config.channel.artifact_base_url = "https://example.invalid/artifacts".to_string();
+    config.trust_state_dir = config.cache_dir.join("trust");
+
+    let err = Updater::new(config).unwrap_err();
+    assert!(
+        matches!(err, super::Error::TrustStateInCache { .. }),
+        "{err}"
+    );
+}
+
+#[test]
 fn a_tick_checks_once_and_then_waits_out_the_interval() {
     let fixture = Fixture::instant();
     let updater = fixture.updater(false);

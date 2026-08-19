@@ -54,9 +54,24 @@ pub struct Updater {
 impl Updater {
     /// An updater following the channel `config` names.
     ///
+    /// Both base URLs must be https, and the trust-state directory must not
+    /// sit inside the cache directory: the floor it holds is only a floor for
+    /// as long as no janitor is free to clear it.
+    ///
     /// Nothing is fetched here: the first check runs on the first
     /// [`Updater::tick`] or [`Updater::check_now`].
     pub fn new(config: UpdaterConfig) -> Result<Self> {
+        if !config.channel.artifact_base_url.starts_with("https://") {
+            return Err(Error::Insecure(config.channel.artifact_base_url.clone()));
+        }
+        // Path-wise, not canonicalized — the directories need not exist yet.
+        // This catches the configuration mistake, not a determined bypass.
+        if config.trust_state_dir.starts_with(&config.cache_dir) {
+            return Err(Error::TrustStateInCache {
+                trust: config.trust_state_dir.clone(),
+                cache: config.cache_dir.clone(),
+            });
+        }
         // Its own transport: the queue owns the one artifacts stream through,
         // and metadata is small, uncached, and unresumable. They share only the
         // cache directory, which is a path rather than state.

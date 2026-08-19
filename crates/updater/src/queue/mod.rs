@@ -510,42 +510,67 @@ fn transfer(
     }
 
     let mut buffer = vec![0u8; CHUNK_SIZE];
+    // The request named a length, so a body that keeps going past it is
+    // stopped here rather than read to whatever end the server picks: nothing
+    // the extra bytes could hash to would validate, and an unbounded body
+    // would otherwise fill the disk.
+    let mut oversize = None;
     loop {
         let chunk = download.read_chunk(&mut buffer);
         slot.store_progress(&download.progress());
         match chunk {
-            Chunk::Read(read) => digest.update(&buffer[..read]),
+            Chunk::Read(read) => {
+                digest.update(&buffer[..read]);
+                if let Some(expected) = request.expected_size {
+                    let downloaded = download.progress().downloaded;
+                    if downloaded > expected && oversize.is_none() {
+                        oversize = Some(Failure::Oversize {
+                            expected,
+                            actual: downloaded,
+                        });
+                        download.request_cancel();
+                    }
+                }
+            }
             Chunk::Idle | Chunk::Failed => break,
         }
     }
 
     let snapshot = download.progress();
     let mut failure = None;
-    let state = match snapshot.status {
-        Status::Complete => {
-            match validate(
-                cache_path,
-                &request.digest,
-                request.expected_size,
-                digest,
-                snapshot.downloaded,
-            ) {
-                Ok(()) => State::Complete,
-                Err(refused) => {
-                    // The cache entry holds bytes that failed validation. Drop
-                    // it, or the next attempt takes a cache hit and re-serves
-                    // the same poisoned bytes forever.
-                    shared.transport.cache().evict(&request.digest);
-                    failure = Some(refused);
-                    State::Failed
+    let state = if let Some(refused) = oversize {
+        // The cancel above discards the partial file; eviction also clears any
+        // sidecar an earlier pause left, so nothing resumes onto refused bytes.
+        shared.transport.cache().evict(&request.digest);
+        failure = Some(refused);
+        State::Failed
+    } else {
+        match snapshot.status {
+            Status::Complete => {
+                match validate(
+                    cache_path,
+                    &request.digest,
+                    request.expected_size,
+                    digest,
+                    snapshot.downloaded,
+                ) {
+                    Ok(()) => State::Complete,
+                    Err(refused) => {
+                        // The cache entry holds bytes that failed validation. Drop
+                        // it, or the next attempt takes a cache hit and re-serves
+                        // the same poisoned bytes forever.
+                        shared.transport.cache().evict(&request.digest);
+                        failure = Some(refused);
+                        State::Failed
+                    }
                 }
             }
-        }
-        Status::Cancelled => State::Cancelled,
-        Status::Paused => State::Paused,
-        Status::Pending | Status::Downloading | Status::Failed => {
-            failure = snapshot.failure.map(Failure::Transfer);
-            State::Failed
+            Status::Cancelled => State::Cancelled,
+            Status::Paused => State::Paused,
+            Status::Pending | Status::Downloading | Status::Failed => {
+                failure = snapshot.failure.map(Failure::Transfer);
+                State::Failed
+            }
         }
     };
 

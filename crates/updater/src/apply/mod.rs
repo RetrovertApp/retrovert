@@ -106,6 +106,11 @@ impl Applier {
     /// failure leaves the installed generation untouched and quarantines the
     /// download that caused it.
     pub fn apply(&self, plan: &Plan, priority: Priority) -> Result<Generation> {
+        // The id names a directory and the paths name files inside it. The
+        // sanctioned flow produces both from a parsed manifest, but a plan is
+        // plain data a consumer could have stored or rebuilt, so what reaches
+        // the filesystem is re-proven here rather than trusted.
+        refuse_unsafe_names(plan)?;
         let generation = match self.install.resolve(&plan.generation_id) {
             Some(installed) => installed,
             None => self.publish(plan, priority)?,
@@ -343,6 +348,30 @@ fn digest_of(artifact: &Artifact) -> Result<ArtifactDigest> {
     })
 }
 
+/// Refuse a plan whose names cannot safely reach the filesystem: a generation
+/// id that is not a manifest digest, or an artifact path that could climb out
+/// of the generation directory.
+///
+/// A plan built from an authenticated manifest always passes — the manifest's
+/// own validation is stricter — so this only ever stops a plan that did not
+/// come from one.
+fn refuse_unsafe_names(plan: &Plan) -> Result<()> {
+    if !retrovert_tuf::manifest::is_hex_sha256(&plan.generation_id) {
+        return Err(Error::GenerationId {
+            id: plan.generation_id.clone(),
+        });
+    }
+    for artifact in &plan.artifacts {
+        if !retrovert_tuf::manifest::is_clean_relative_path(&artifact.path) {
+            return Err(Error::UnsafePath {
+                name: artifact.name.clone(),
+                path: artifact.path.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Refuse a plan whose artifacts want the same place in the generation.
 ///
 /// A manifest keeps name-and-target pairs unique but says nothing about paths,
@@ -389,6 +418,52 @@ mod tests {
             size: 1,
             revision: "abc1234".to_string(),
             version: None,
+        }
+    }
+
+    fn plan_of(id: &str, artifacts: Vec<Artifact>) -> Plan {
+        Plan {
+            generation_id: id.to_string(),
+            artifacts,
+            total_bytes: 0,
+            cached_bytes: 0,
+        }
+    }
+
+    #[test]
+    fn a_generation_id_that_is_not_a_manifest_digest_is_refused() {
+        for bad in ["", "aa", "../escape", &"A".repeat(64)] {
+            let err = refuse_unsafe_names(&plan_of(bad, Vec::new())).unwrap_err();
+            assert!(
+                matches!(&err, Error::GenerationId { id } if id == bad),
+                "{err}"
+            );
+        }
+        let digest_shaped = "ab".repeat(32);
+        assert!(
+            refuse_unsafe_names(&plan_of(
+                &digest_shaped,
+                vec![artifact("spu", "spu.tar.zst")]
+            ))
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn an_artifact_path_that_could_escape_the_generation_is_refused() {
+        let id = "ab".repeat(32);
+        for bad in [
+            "../outside",
+            "/etc/passwd",
+            "c:/evil",
+            "app?x=1",
+            "dir\\app",
+        ] {
+            let err = refuse_unsafe_names(&plan_of(&id, vec![artifact("spu", bad)])).unwrap_err();
+            assert!(
+                matches!(&err, Error::UnsafePath { path, .. } if path == bad),
+                "{err}"
+            );
         }
     }
 

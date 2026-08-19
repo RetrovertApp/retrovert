@@ -16,7 +16,9 @@ pub struct ChannelConfig {
     /// The signed metadata and the manifest it carries as a target. HTTPS
     /// only, because the verification time is this host's `Date` header.
     pub metadata_base_url: String,
-    /// What the manifest's artifact paths resolve against.
+    /// What the manifest's artifact paths resolve against. HTTPS only:
+    /// artifacts are digest-verified, but a plaintext fetch still tells every
+    /// observer what this client runs.
     pub artifact_base_url: String,
 }
 
