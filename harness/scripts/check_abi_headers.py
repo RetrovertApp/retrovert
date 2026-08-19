@@ -39,7 +39,8 @@ def check(harness, plugin_include):
     for header in vendored:
         if header.name not in pinned:
             fail(f"{header.name} is not part of the pinned canonical header set")
-        digest = hashlib.sha256(header.read_bytes()).hexdigest()
+        # CRLF checkouts on Windows are not ABI drift; hash LF-normalized.
+        digest = hashlib.sha256(header.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
         if digest != pinned[header.name]:
             drifted.append(header.name)
     if drifted:
