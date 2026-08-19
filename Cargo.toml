@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/retrovert-player",
     "crates/retrovert-player-ui",
+    "crates/retrovert-plugin-catalog",
 ]
 
 [workspace.package]
@@ -16,6 +17,7 @@ flowi = { path = "../flowi/rust/flowi" }
 log = "0.4"
 retrovert-host = { path = "../retrovert/retrovert_api/rust/retrovert-host" }
 retrovert-player = { path = "crates/retrovert-player" }
+retrovert-updater = { path = "../retrovert/retrovert-updater/crates/retrovert-updater" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
