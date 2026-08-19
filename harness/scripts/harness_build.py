@@ -82,23 +82,18 @@ def extract_generation(archive, dest):
     return dest
 
 
-def fixture_files(harness, name):
-    fdir = harness / "fixtures" / name
-    if not fdir.is_dir():
-        fail(f"no fixtures for {name}: {fdir} missing (a fixture is a release blocker)")
-    sums = {}
-    for line in (harness / "fixtures" / "SHA256SUMS").read_text().splitlines():
-        digest, path = line.split(None, 1)
-        sums[path.strip()] = digest
-    files = sorted(p for p in fdir.iterdir() if p.is_file())
-    if not files:
-        fail(f"{fdir} is empty")
-    for f in files:
-        rel = f"{name}/{f.name}"
-        if rel not in sums:
-            fail(f"fixture {rel} is not listed in fixtures/SHA256SUMS")
-        if hashlib.sha256(f.read_bytes()).hexdigest() != sums[rel]:
-            fail(f"fixture {rel} does not match its recorded sha256")
+def fixture_files(repo, cfg):
+    # Fixtures are declared by hash in the plugin's own harness.toml, so
+    # fixture identity travels with the plugin revision and the harness
+    # holds no per-plugin knowledge.
+    files = []
+    for f in cfg["fixtures"]:
+        path = repo / f["file"]
+        if not path.is_file():
+            fail(f"declared fixture {f['file']} is missing from the plugin repo")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != f["sha256"]:
+            fail(f"fixture {f['file']} does not match its declared sha256")
+        files.append(path)
     return files
 
 
@@ -198,7 +193,7 @@ def main():
 
     generation = extract_generation(artifact, work / "generation")
     lib_rel = f"{name}_playback{TARGETS[target]['lib_suffix']}"
-    fixtures = fixture_files(harness, name)
+    fixtures = fixture_files(repo, cfg)
     run_smoke(host_bin, lib_rel, fixtures, generation, work / "jail", sandbox)
 
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()

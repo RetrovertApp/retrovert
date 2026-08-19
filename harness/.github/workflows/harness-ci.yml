@@ -12,7 +12,7 @@ on:
 
 env:
   # Known-good plugin revision the harness validates itself against.
-  SPU_TEST_REV: 3651e0c455eec8e056978a51d052d18d17c642cc
+  SPU_TEST_REV: 828e70da1d4631d19c7624a10cf8f7b3de8dbb65
 
 jobs:
   determinism-linux:

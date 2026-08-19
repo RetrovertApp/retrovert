@@ -4,6 +4,7 @@ The allowlists here are contract enforcement, versioned with the harness:
 widening either one is a harness version bump.
 """
 
+import re
 import subprocess
 import sys
 
@@ -78,4 +79,25 @@ def load_harness_toml(repo):
     ):
         fail("harness.toml: [data] entries must be a list of plain top-level names")
     version = cfg.get("plugin", {}).get("version")
-    return {"name": name, "data_entries": data_entries, "version": version}
+    fixtures = cfg.get("fixtures", [])
+    if not isinstance(fixtures, list) or not fixtures:
+        fail(
+            "harness.toml: at least one [[fixtures]] entry (file + sha256) is "
+            "required; a plugin without a playback fixture is a release blocker"
+        )
+    for f in fixtures:
+        file = f.get("file") if isinstance(f, dict) else None
+        if (
+            not isinstance(file, str)
+            or file.startswith(("/", "\\"))
+            or ".." in file.split("/")
+        ):
+            fail("harness.toml: [[fixtures]] file must be a relative repo path")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(f.get("sha256", ""))):
+            fail(f"harness.toml: [[fixtures]] {file} needs a lowercase sha256")
+    return {
+        "name": name,
+        "data_entries": data_entries,
+        "version": version,
+        "fixtures": fixtures,
+    }

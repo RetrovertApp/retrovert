@@ -32,7 +32,8 @@ CRT, clang-cl).
    0755/0644 modes, mtime = plugin commit timestamp, pinned zstd level.
 5. Archive lint + both-ways `harness.toml` data declaration check.
 6. Load/unload smoke and ≥10 s non-silent playback smoke against the
-   repo-pinned fixture, through `host/rv_host` — on Linux inside the
+   fixture(s) the plugin declares by sha256 in its `harness.toml`,
+   through `host/rv_host` — on Linux inside the
    glibc-2.28 toolchain container, playback sealed in a network-less chroot
    jail where only the extracted generation and the fixture are readable
    (the injected-RVIo compliance gate).
@@ -43,13 +44,14 @@ artifacts must be byte-identical.
 
 ## Rolling a plugin repo on
 
-1. Add `harness.toml` (plugin name + payload-data declaration).
+1. Add `harness.toml`: plugin name, payload-data declaration, and at
+   least one playback fixture (a redistribution-clean file in the plugin
+   repo, declared with its sha256). Fixture identity rides in the plugin
+   revision, so nothing here changes when a plugin joins.
 2. Vendor headers in `include/retrovert/` matching the pinned set.
 3. Ship license texts at the repo root (`LICENSE*`, `COPYING*`, `NOTICE*`
    or a `licenses/` directory).
-4. Add a fixture under `fixtures/<name>/` here, hashed in
-   `fixtures/SHA256SUMS`.
-5. Add the caller workflow:
+4. Add the caller workflow:
 
 ```yaml
 name: Release artifacts
