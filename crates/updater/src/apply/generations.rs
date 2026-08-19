@@ -58,6 +58,7 @@ fn plan(id: &str, artifacts: Vec<Artifact>) -> Plan {
     let total_bytes = artifacts.iter().map(|a| a.size).sum();
     Plan {
         generation_id: id.to_string(),
+        release_version: 1,
         artifacts,
         total_bytes,
         cached_bytes: 0,
@@ -165,6 +166,32 @@ impl Fixture {
     fn cache_path(&self, bytes: &[u8]) -> PathBuf {
         self.queue.transport().cache().path_for(&digest(bytes))
     }
+}
+
+#[test]
+fn a_versioned_base_url_resolves_against_the_release_set() {
+    let fixture = Fixture::new();
+    let spu = fixture.spu.clone();
+    let mut routes = HashMap::new();
+    routes.insert(format!("/sets/v7/{SPU}"), Body::instant(spu, "\"spu-v7\""));
+    let server = FixtureServer::start(routes);
+
+    let applier = Applier::new(
+        Arc::clone(&fixture.queue),
+        fixture.install_root(),
+        &server.url("/sets/v{version}/"),
+    );
+    let mut plan = plan(
+        &generation_id("versioned"),
+        vec![artifact("spu", SPU, &fixture.spu)],
+    );
+    plan.release_version = 7;
+
+    let generation = applier.apply(&plan, Priority::User).expect("an apply");
+    assert_eq!(
+        fs::read(generation.path_of(&generation.artifacts()[0])).expect("a published file"),
+        fixture.spu
+    );
 }
 
 #[test]

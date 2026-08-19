@@ -469,6 +469,7 @@ fn only_one_check_or_apply_runs_at_a_time() {
         !updater.apply(
             &crate::check::Plan {
                 generation_id: "unused".to_string(),
+                release_version: 1,
                 artifacts: Vec::new(),
                 total_bytes: 0,
                 cached_bytes: 0,

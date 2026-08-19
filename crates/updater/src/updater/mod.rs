@@ -221,6 +221,23 @@ impl Updater {
         self.inner.applier.install_root().root()
     }
 
+    /// Drop the cached download for `sha256`, reporting whether one went.
+    ///
+    /// For a consumer's janitor once a generation has published: the
+    /// generation holds its own verified copy, so the cache entry only pays
+    /// for a re-apply of the same set. Only complete entries are dropped — a
+    /// partial one is a transfer's resume state, not a leftover.
+    pub fn evict_cached(&self, sha256: &str) -> bool {
+        let Ok(digest) = ArtifactDigest::from_hex(sha256) else {
+            return false;
+        };
+        if !self.inner.cache.is_complete(&digest) {
+            return false;
+        }
+        self.inner.cache.evict(&digest);
+        true
+    }
+
     #[cfg(test)]
     fn run_panicking_job(&self) -> bool {
         self.start(Job::Panic)

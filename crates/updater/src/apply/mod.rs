@@ -45,6 +45,11 @@ use crate::transport::ArtifactDigest;
 /// poll rather than a park.
 const POLL: Duration = Duration::from_millis(20);
 
+/// The base-URL slot a release set's version fills in, letting one channel
+/// configuration follow artifacts that are hosted per release set (a GitHub
+/// release per `<channel>/vN`) rather than under one immovable base.
+const VERSION_SLOT: &str = "{version}";
+
 /// Publishes plans into the install root, and reports each generation once.
 pub struct Applier {
     queue: Arc<TransferQueue>,
@@ -144,7 +149,8 @@ impl Applier {
 
             while next < plan.artifacts.len() {
                 let artifact = &plan.artifacts[next];
-                let Some(id) = self.queue.queue(self.request_for(artifact, priority)?) else {
+                let request = self.request_for(artifact, plan.release_version, priority)?;
+                let Some(id) = self.queue.queue(request) else {
                     // Every slot is in use; the sweep below frees some.
                     break;
                 };
@@ -210,9 +216,19 @@ impl Applier {
         }
     }
 
-    fn request_for(&self, artifact: &Artifact, priority: Priority) -> Result<Request> {
+    fn request_for(
+        &self,
+        artifact: &Artifact,
+        release_version: u64,
+        priority: Priority,
+    ) -> Result<Request> {
         Ok(Request {
-            url: format!("{}{}", self.base, artifact.path),
+            url: format!(
+                "{}{}",
+                self.base
+                    .replace(VERSION_SLOT, &release_version.to_string()),
+                artifact.path
+            ),
             digest: digest_of(artifact)?,
             expected_size: Some(artifact.size),
             priority,
@@ -424,6 +440,7 @@ mod tests {
     fn plan_of(id: &str, artifacts: Vec<Artifact>) -> Plan {
         Plan {
             generation_id: id.to_string(),
+            release_version: 1,
             artifacts,
             total_bytes: 0,
             cached_bytes: 0,

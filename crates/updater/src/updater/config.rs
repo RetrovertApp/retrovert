@@ -19,6 +19,10 @@ pub struct ChannelConfig {
     /// What the manifest's artifact paths resolve against. HTTPS only:
     /// artifacts are digest-verified, but a plaintext fetch still tells every
     /// observer what this client runs.
+    ///
+    /// A literal `{version}` in it is replaced with the release-set version
+    /// the manifest carries, for channels that host each release set's
+    /// artifacts under its own URL — a GitHub release per `<channel>/vN`.
     pub artifact_base_url: String,
 }
 

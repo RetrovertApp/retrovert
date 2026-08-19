@@ -10,6 +10,9 @@ use crate::transport::{ArtifactDigest, Cache};
 pub struct Plan {
     /// The generation the channel is offering.
     pub generation_id: String,
+    /// The release-set version the manifest carried, which is what a
+    /// `{version}` in the artifact base URL resolves to.
+    pub release_version: u64,
     /// The artifacts that apply to this consumer, in manifest order.
     pub artifacts: Vec<Artifact>,
     /// What those artifacts weigh in total.
@@ -55,6 +58,7 @@ impl Plan {
 
         Self {
             generation_id,
+            release_version: manifest.version,
             artifacts,
             total_bytes,
             cached_bytes,
