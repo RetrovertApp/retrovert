@@ -27,7 +27,7 @@ use crate::transport::Transport;
 
 /// What one authentication attempt produced.
 #[derive(Debug, Clone)]
-pub enum Check {
+pub enum Attempt {
     /// No network time was available, so nothing was verified and no trust
     /// state moved. The caller keeps whatever generation it already has.
     Skipped,
@@ -105,9 +105,9 @@ impl Channel {
     /// Exclusive, because raising the floor is a read-modify-write over the
     /// trust directory: two checks running against one directory could
     /// otherwise interleave and leave the lower of their two floors behind.
-    pub fn authenticate(&mut self) -> Result<Check> {
+    pub fn authenticate(&mut self) -> Result<Attempt> {
         let Some(now) = self.clock.network_time() else {
-            return Ok(Check::Skipped);
+            return Ok(Attempt::Skipped);
         };
         let at = now.timestamp();
 
@@ -124,7 +124,7 @@ impl Channel {
         self.trust.record(&floor.raised_to(&offered))?;
 
         let bytes = pollster::block_on(updater.get_target(manifest::TARGET_PATH, at))?;
-        Ok(Check::Authenticated(Authenticated {
+        Ok(Attempt::Authenticated(Authenticated {
             generation_id: manifest::generation_id(&bytes),
             manifest: Manifest::parse(&bytes)?,
             verified_at: at,

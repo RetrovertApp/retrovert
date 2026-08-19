@@ -15,7 +15,7 @@ retrovert-tuf = { path = "crates/retrovert-tuf", version = "0.1.0" }
 ed25519-dalek = { version = "3.0", features = ["pem", "pkcs8", "zeroize"] }
 getrandom = "0.3"
 hex = "0.4"
-jiff = "0.2"
+jiff = { version = "0.2", features = ["serde"] }
 olpc-cjson = "0.1"
 pollster = "1.0"
 serde = { version = "1.0", features = ["derive"] }

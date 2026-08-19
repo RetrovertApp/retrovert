@@ -15,7 +15,7 @@ use jiff::tz::TimeZone;
 use jiff::{Span, Timestamp};
 use retrovert_tuf::manifest;
 use retrovert_updater::channel::{
-    Authenticated, Channel, Check, Clock, Error, HostDate, HttpSource, NetworkTime, TrustStore,
+    Attempt, Authenticated, Channel, Clock, Error, HostDate, HttpSource, NetworkTime, TrustStore,
 };
 use retrovert_updater::transport::Transport;
 use sigstore_tuf::Error as TufError;
@@ -63,10 +63,10 @@ fn channel_at(fixture: &FixtureChannel, trust: &Path, at: Timestamp) -> Channel 
     )
 }
 
-fn authenticated(check: Check) -> Authenticated {
-    match check {
-        Check::Authenticated(authenticated) => authenticated,
-        Check::Skipped => panic!("the check was skipped"),
+fn authenticated(attempt: Attempt) -> Authenticated {
+    match attempt {
+        Attempt::Authenticated(authenticated) => authenticated,
+        Attempt::Skipped => panic!("the check was skipped"),
     }
 }
 
@@ -77,11 +77,11 @@ fn a_published_channel_resolves_to_its_manifest() {
     let bytes = manifest_bytes(7, "abc1234");
     let generation_id = fixture.publish(&bytes, now());
 
-    let check = channel_at(&fixture, trust.path(), now())
+    let attempt = channel_at(&fixture, trust.path(), now())
         .authenticate()
         .unwrap();
 
-    let resolved = authenticated(check);
+    let resolved = authenticated(attempt);
     assert_eq!(resolved.generation_id, generation_id);
     assert_eq!(resolved.verified_at, now());
     assert_eq!(resolved.manifest.version, 7);
@@ -127,7 +127,7 @@ fn a_check_without_network_time_is_skipped_rather_than_run_on_the_local_clock() 
         store.clone(),
     );
 
-    assert!(matches!(channel.authenticate().unwrap(), Check::Skipped));
+    assert!(matches!(channel.authenticate().unwrap(), Attempt::Skipped));
     assert!(
         !store.dir().exists(),
         "a skipped check must leave trust state untouched"

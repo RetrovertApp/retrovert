@@ -296,21 +296,51 @@ impl Repository for FlatDirs {
 
 /// A release-set manifest naming one artifact, at `version`.
 pub fn manifest_bytes(version: u64, revision: &str) -> Vec<u8> {
+    manifest_of(
+        version,
+        revision,
+        &[artifact(
+            "spu",
+            Some("linux-x86_64"),
+            &"ab".repeat(32),
+            42,
+            revision,
+        )],
+    )
+}
+
+/// A release-set manifest listing `artifacts`, at `version`.
+pub fn manifest_of(version: u64, revision: &str, artifacts: &[serde_json::Value]) -> Vec<u8> {
     serde_json::to_vec_pretty(&serde_json::json!({
         "schema": manifest::SCHEMA_VERSION,
         "version": version,
         "source_revision": revision,
         "published": "2026-08-15T12:00:00Z",
-        "artifacts": [{
-            "name": "spu",
-            "target": "linux-x86_64",
-            "path": format!("spu-{revision}-linux-x86_64.tar.zst"),
-            "sha256": "ab".repeat(32),
-            "size": 42,
-            "revision": revision,
-        }],
+        "artifacts": artifacts,
     }))
     .expect("manifest json")
+}
+
+/// One artifact entry; `target` absent matches every consumer.
+pub fn artifact(
+    name: &str,
+    target: Option<&str>,
+    sha256: &str,
+    size: u64,
+    revision: &str,
+) -> serde_json::Value {
+    let suffix = target.map_or_else(String::new, |target| format!("-{target}"));
+    let mut entry = serde_json::json!({
+        "name": name,
+        "path": format!("{name}-{revision}{suffix}.tar.zst"),
+        "sha256": sha256,
+        "size": size,
+        "revision": revision,
+    });
+    if let Some(target) = target {
+        entry["target"] = target.into();
+    }
+    entry
 }
 
 fn assets_of(dirs: &[PathBuf]) -> BTreeMap<String, Vec<u8>> {

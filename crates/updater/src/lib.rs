@@ -7,6 +7,7 @@
 //! generation goes live are the consumer's, decided after acquisition.
 
 pub mod channel;
+pub mod check;
 pub mod policy;
 pub mod queue;
 pub mod transport;
