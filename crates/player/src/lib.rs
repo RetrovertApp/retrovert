@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use retrovert_host::loader::load_plugins;
+use retrovert_host::loader::{load_plugins, PluginError, PluginKind, PluginSet};
 use retrovert_host::service::{ServiceHost, TrackMetadata};
 use retrovert_host::session::{
     OwnedPlaybackRuntime, OwnedPreparedSession, OwnedSessionError, SessionError, StreamFormat,
@@ -33,6 +33,7 @@ pub enum PlaybackStatus {
 
 /// Failures while selecting, opening, rendering, or capturing a session.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum BackendError {
     #[error("could not read media")]
     Media(#[source] std::io::Error),
@@ -42,6 +43,8 @@ pub enum BackendError {
     Session(#[source] SessionError),
     #[error("visualization capture failed")]
     Visualization(#[source] VisualizationError),
+    #[error("decode runtime failed")]
+    Runtime(#[source] OwnedSessionError),
 }
 
 impl From<SessionError> for BackendError {
@@ -55,6 +58,8 @@ impl From<OwnedSessionError> for BackendError {
         match error {
             OwnedSessionError::Session(error) => Self::Session(error),
             OwnedSessionError::Visualization(error) => Self::Visualization(error),
+            // Required because retrovert-host may add owned-session failures.
+            error => Self::Runtime(error),
         }
     }
 }
@@ -91,6 +96,15 @@ pub trait PlaybackBackend {
     fn plugin_name(&self) -> &str;
     /// Reports the mounted media extension, or an empty string when idle.
     fn media_extension(&self) -> &str;
+}
+
+/// The outcome of one decoder-set swap.
+#[derive(Debug)]
+pub struct SwapReport {
+    /// How many playback plugins the replacement set holds.
+    pub loaded: usize,
+    /// The paths rejected while loading the replacement set.
+    pub errors: Vec<PluginError>,
 }
 
 #[derive(Debug)]
@@ -134,6 +148,27 @@ impl PlayerBackend {
             target,
             max_frames,
             session: None,
+        }
+    }
+
+    /// Replaces the decoder set and the extension index together.
+    ///
+    /// The current session and the old decoder set are fully dropped before
+    /// anything from `plugin_paths` loads, so at most one set is ever
+    /// resident. A rejected path rolls nothing back — the old set is already
+    /// gone — so the caller judges the report and swaps back to the previous
+    /// set's paths if it refuses the new one.
+    pub fn swap_plugins(&mut self, plugin_paths: &[PathBuf]) -> SwapReport {
+        self.session = None;
+        self.extensions = std::collections::HashSet::new();
+        self.runtime = OwnedPlaybackRuntime::new(PluginSet::default(), ServiceHost::default());
+        let report = load_plugins(plugin_paths);
+        let loaded = report.plugins.of_kind(PluginKind::Playback).count();
+        self.extensions = extensions::supported_extensions(&report.plugins);
+        self.runtime = OwnedPlaybackRuntime::new(report.plugins, ServiceHost::default());
+        SwapReport {
+            loaded,
+            errors: report.errors,
         }
     }
 
