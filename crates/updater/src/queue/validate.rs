@@ -84,6 +84,15 @@ pub(super) fn validate(
         }
     }
 
+    verify_on_disk(path, digest)
+}
+
+/// Check that the file at `path` reads back as `digest`.
+///
+/// The last of [`validate`]'s three gates on its own, for a caller holding a
+/// file it did not stream: publication copies a validated artifact out of the
+/// cache, and the copy has to prove the same thing the original did.
+pub(crate) fn verify_on_disk(path: &Path, digest: &ArtifactDigest) -> Result<(), Failure> {
     match hash_file(path) {
         None => Err(Failure::Unreadable),
         Some(on_disk) if &on_disk != digest.as_bytes() => Err(Failure::DiskDigest {

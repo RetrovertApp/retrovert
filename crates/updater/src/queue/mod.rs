@@ -28,6 +28,8 @@ use crate::transport::{ArtifactDigest, Chunk, Download, Snapshot, Status, Transp
 use entry::{Entry, UNKNOWN_TOTAL, auto_resume_preempted, next_pending, preempt_for_user};
 use validate::{CHUNK_SIZE, hash_prefix, validate};
 
+pub(crate) use validate::verify_on_disk;
+
 pub use entry::{Priority, State};
 pub use validate::Failure;
 
