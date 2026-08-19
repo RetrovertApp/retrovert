@@ -3,19 +3,17 @@
 //! The server is in-process and hermetic (see [`fixture_server`]), so these run
 //! wherever `cargo test` runs.
 
-mod fixture_server;
-
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use fixture_server::{Body, FixtureServer};
+use crate::apply::{Applier, Error, InstallRoot};
+use crate::check::Plan;
+use crate::queue::{Config, Failure, Priority, QUEUE_MAX, Request, TransferQueue};
+use crate::testing::fixture_server::{Body, FixtureServer};
+use crate::transport::{ArtifactDigest, Transport};
 use retrovert_tuf::manifest::Artifact;
-use retrovert_updater::apply::{Applier, Error, InstallRoot};
-use retrovert_updater::check::Plan;
-use retrovert_updater::queue::{Config, Failure, Priority, QUEUE_MAX, Request, TransferQueue};
-use retrovert_updater::transport::{ArtifactDigest, Transport};
 use sha2::{Digest, Sha256};
 
 const SPU: &str = "spu.tar.zst";

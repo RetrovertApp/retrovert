@@ -104,16 +104,6 @@ impl Transport {
         Download::start(&self.agents, self.cache.path_for(digest), url, allow_resume)
     }
 
-    /// Start a transfer into `dest`, bypassing the cache.
-    pub fn download_to(
-        &self,
-        url: &str,
-        dest: impl Into<PathBuf>,
-        allow_resume: bool,
-    ) -> Result<Download> {
-        Download::start(&self.agents, dest.into(), url, allow_resume)
-    }
-
     /// Fetch at most `limit` bytes into memory, cache-busted and unresumable.
     ///
     /// Fails with [`Error::TooLarge`] rather than reading a body past `limit`.
@@ -128,12 +118,6 @@ impl Transport {
     /// carried it rather than on a signature over it.
     pub fn get_bounded_over_tls(&self, url: &str, limit: usize) -> Result<BoundedResponse> {
         bounded(&self.agents.tls_only, url, limit)
-    }
-
-    /// The length the server reports for `url`, when it reports one.
-    #[must_use]
-    pub fn url_size(&self, url: &str) -> Option<u64> {
-        url_size(&self.agents.short, url)
     }
 }
 

@@ -23,12 +23,6 @@ impl Cache {
         Self { root: root.into() }
     }
 
-    /// The directory holding the entries.
-    #[must_use]
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
-
     /// Where the artifact with this digest is cached.
     #[must_use]
     pub fn path_for(&self, digest: &ArtifactDigest) -> PathBuf {
@@ -42,6 +36,7 @@ impl Cache {
     }
 
     /// Whether an interrupted transfer left something to resume.
+    #[cfg_attr(not(test), allow(dead_code))]
     #[must_use]
     pub fn has_partial(&self, digest: &ArtifactDigest) -> bool {
         meta::read(&self.path_for(digest)).is_some()

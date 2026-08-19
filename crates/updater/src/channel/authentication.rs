@@ -2,22 +2,19 @@
 //!
 //! Everything here runs against a channel published into a temporary directory.
 
-mod fixture_channel;
-mod fixture_server;
-
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use fixture_channel::{FixtureChannel, KeySet, manifest_bytes};
-use fixture_server::{Body, FixtureServer};
+use crate::channel::{
+    Attempt, Authenticated, Channel, Clock, Error, HostDate, HttpSource, NetworkTime, TrustStore,
+};
+use crate::testing::fixture_channel::{FixtureChannel, KeySet, manifest_bytes};
+use crate::testing::fixture_server::{Body, FixtureServer};
+use crate::transport::Transport;
 use jiff::tz::TimeZone;
 use jiff::{Span, Timestamp};
 use retrovert_tuf::manifest;
-use retrovert_updater::channel::{
-    Attempt, Authenticated, Channel, Clock, Error, HostDate, HttpSource, NetworkTime, TrustStore,
-};
-use retrovert_updater::transport::Transport;
 use sigstore_tuf::Error as TufError;
 use tempfile::TempDir;
 

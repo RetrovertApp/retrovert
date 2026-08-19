@@ -10,11 +10,14 @@ mod error;
 mod plan;
 mod record;
 
+#[cfg(test)]
+mod checking;
+
 use jiff::Timestamp;
 
 pub use error::{Error, Result};
-pub use plan::{Plan, applies_to};
-pub use record::{CheckLog, Conclusion, MAX_ENTRIES, Record};
+pub use plan::Plan;
+pub use record::{CheckLog, Conclusion, Record};
 
 use crate::channel::{Attempt, Channel};
 use crate::transport::Cache;

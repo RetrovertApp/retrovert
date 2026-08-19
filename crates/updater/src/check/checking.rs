@@ -3,20 +3,17 @@
 //!
 //! Everything here runs against a channel published into a temporary directory.
 
-mod fixture_channel;
-mod fixture_server;
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use fixture_channel::{FixtureChannel, artifact, manifest_of};
-use fixture_server::{Body, FixtureServer};
+use crate::channel::{Channel, Clock, NetworkTime, TrustStore};
+use crate::check::{CheckLog, Checker, Conclusion, Outcome, Plan, Skipped};
+use crate::queue::{Priority, Request, State, TransferQueue};
+use crate::testing::fixture_channel::{FixtureChannel, artifact, manifest_of};
+use crate::testing::fixture_server::{Body, FixtureServer};
+use crate::transport::{ArtifactDigest, Cache, Transport};
 use jiff::Timestamp;
-use retrovert_updater::channel::{Channel, Clock, NetworkTime, TrustStore};
-use retrovert_updater::check::{CheckLog, Checker, Conclusion, Outcome, Plan, Skipped};
-use retrovert_updater::queue::{Priority, Request, State, TransferQueue};
-use retrovert_updater::transport::{ArtifactDigest, Cache, Transport};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sigstore_tuf::transport::Repository;

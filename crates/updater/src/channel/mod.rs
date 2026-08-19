@@ -11,6 +11,9 @@ mod source;
 mod time;
 mod trust;
 
+#[cfg(test)]
+mod authentication;
+
 use std::sync::Arc;
 
 use jiff::Timestamp;
@@ -20,7 +23,9 @@ use sigstore_tuf::{Repository, Updater};
 
 pub use error::{Error, Result};
 pub use source::HttpSource;
-pub use time::{Clock, HostDate, NetworkTime};
+#[cfg_attr(not(test), allow(unused_imports))]
+pub use time::NetworkTime;
+pub use time::{Clock, HostDate};
 pub use trust::{Floor, TrustStore};
 
 use crate::transport::Transport;
@@ -43,6 +48,7 @@ pub struct Authenticated {
     /// The digest of the manifest's exact bytes.
     pub generation_id: String,
     /// The network time the chain was verified against.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub verified_at: Timestamp,
 }
 

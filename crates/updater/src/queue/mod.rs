@@ -15,6 +15,9 @@
 mod entry;
 mod validate;
 
+#[cfg(test)]
+mod transfers;
+
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, Ordering};
@@ -632,6 +635,7 @@ pub struct TransferQueue {
 impl TransferQueue {
     /// A queue acquiring artifacts through `transport`, with the default
     /// worker configuration.
+    #[cfg_attr(not(test), allow(dead_code))]
     #[must_use]
     pub fn new(transport: Transport) -> Self {
         Self::with_config(transport, Config::default())
@@ -663,6 +667,7 @@ impl TransferQueue {
     }
 
     /// Workers this queue drains with, and so transfers it runs at once.
+    #[cfg_attr(not(test), allow(dead_code))]
     #[must_use]
     pub fn workers(&self) -> usize {
         self.shared.workers
@@ -741,6 +746,13 @@ impl TransferQueue {
         true
     }
 
+    /// Cancel every transfer the queue holds, returning how many took it.
+    pub fn cancel_all(&self) -> usize {
+        (0..self.shared.slots.len())
+            .filter(|&index| self.cancel(EntryId(index)))
+            .count()
+    }
+
     /// Pause an active transfer, keeping its partial file resumable. Returns
     /// whether the request applied.
     ///
@@ -758,6 +770,13 @@ impl TransferQueue {
         true
     }
 
+    /// Pause every transfer in flight, returning how many took it.
+    pub fn pause_all(&self) -> usize {
+        (0..self.shared.slots.len())
+            .filter(|&index| self.pause(EntryId(index)))
+            .count()
+    }
+
     /// Resume a paused transfer. Returns whether the request applied.
     #[must_use]
     pub fn resume(&self, id: EntryId) -> bool {
@@ -771,6 +790,16 @@ impl TransferQueue {
         slot.apply(&snapshot);
         arm_workers(shared, &mut state);
         true
+    }
+
+    /// Resume every transfer a caller paused, returning how many took it.
+    ///
+    /// A preempted entry is not one of them: it resumes on its own once the
+    /// user-priority work it yielded to has drained.
+    pub fn resume_all(&self) -> usize {
+        (0..self.shared.slots.len())
+            .filter(|&index| self.resume(EntryId(index)))
+            .count()
     }
 
     /// Free a slot. Refused while its transfer is active.
@@ -806,6 +835,7 @@ impl TransferQueue {
     }
 
     /// Fractional transfer progress, or `0.0` while the total is unknown.
+    #[cfg_attr(not(test), allow(dead_code))]
     #[must_use]
     pub fn progress(&self, id: EntryId) -> f32 {
         self.shared.slots[id.0].snapshot().progress()
@@ -813,6 +843,7 @@ impl TransferQueue {
 
     /// Whether any queued user-priority transfer is still waiting for a
     /// worker.
+    #[cfg_attr(not(test), allow(dead_code))]
     #[must_use]
     pub fn has_user_pending(&self) -> bool {
         entry::has_user_pending(&self.shared.snapshot_all())

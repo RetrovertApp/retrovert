@@ -222,6 +222,7 @@ impl Download {
     }
 
     /// Where the bytes are being written.
+    #[cfg_attr(not(test), allow(dead_code))]
     #[must_use]
     pub fn path(&self) -> PathBuf {
         self.lock().path.clone()

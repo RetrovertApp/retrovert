@@ -5,10 +5,30 @@
 //! beneath a caller-owned installation root. What the artifacts are — playback
 //! plugins, Replay databases, anything else a manifest names — and when a
 //! generation goes live are the consumer's, decided after acquisition.
+//!
+//! [`Updater`] is the whole of the surface. The channel's source, its clock,
+//! and the transfer queue are seams this crate swaps in its own tests and a
+//! consumer never holds.
 
-pub mod apply;
-pub mod channel;
-pub mod check;
-pub mod policy;
-pub mod queue;
-pub mod transport;
+mod apply;
+mod channel;
+mod check;
+mod policy;
+mod queue;
+mod transport;
+mod updater;
+
+#[cfg(test)]
+mod testing;
+
+pub use retrovert_tuf::manifest::Artifact;
+
+pub use apply::{Error as ApplyError, Generation, Installed};
+pub use channel::Error as ChannelError;
+pub use check::{Conclusion, Error as CheckError, Plan, Record};
+pub use queue::{Failure, Priority};
+pub use transport::Failure as TransferFailure;
+pub use updater::{
+    ChannelConfig, Error, Phase, Result, StatusSnapshot, Updater, UpdaterConfig, WorkerConfig,
+    WorkerHook,
+};

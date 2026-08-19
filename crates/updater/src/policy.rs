@@ -11,15 +11,6 @@ const RETRY_BASE_DELAY_MS: i64 = 1000;
 /// under three weeks and keeps a runaway retry count from overflowing.
 const MAX_RETRY_SHIFT: u32 = 30;
 
-/// Whether a path is an HTTP(S) URL rather than something local.
-///
-/// Only `http://` and `https://` qualify — not `ftp://`, not a POSIX path, not
-/// a Windows one.
-#[must_use]
-pub fn is_url(path: &str) -> bool {
-    path.starts_with("http://") || path.starts_with("https://")
-}
-
 /// Fractional progress in `0.0..=1.0`, or `0.0` when the total is unknown.
 #[must_use]
 pub fn progress(bytes_done: i64, bytes_total: i64) -> f32 {
@@ -42,16 +33,6 @@ pub fn retry_delay_ms(retry_count: u32) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn only_http_and_https_are_urls() {
-        assert!(is_url("http://example.com/file.zip"));
-        assert!(is_url("https://example.com/file.zip"));
-        assert!(!is_url("/home/user/file.zip"));
-        assert!(!is_url("data/file.zip"));
-        assert!(!is_url("C:\\Users\\file.zip"));
-        assert!(!is_url("ftp://example.com/file.zip"));
-    }
 
     #[test]
     fn progress_is_a_ratio_and_zero_when_the_total_is_unknown() {

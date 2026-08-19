@@ -68,7 +68,7 @@ impl Plan {
 /// channel serves both plugin sets and databases. A consumer with no target
 /// configured therefore takes the untargeted artifacts and nothing else.
 #[must_use]
-pub fn applies_to(artifact: &Artifact, target: Option<&str>) -> bool {
+pub(super) fn applies_to(artifact: &Artifact, target: Option<&str>) -> bool {
     match artifact.target.as_deref() {
         None => true,
         Some(named) => Some(named) == target,

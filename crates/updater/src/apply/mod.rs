@@ -20,6 +20,9 @@
 mod error;
 mod install;
 
+#[cfg(test)]
+mod generations;
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::{self, File};
 use std::io;

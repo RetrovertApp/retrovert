@@ -3,18 +3,14 @@
 //! The server is in-process and hermetic (see [`fixture_server`]), so these run
 //! wherever `cargo test` runs rather than skipping when a LAN host is missing.
 
-mod fixture_server;
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use fixture_server::{Body, FixtureServer};
-use retrovert_updater::queue::{
-    Config, EntryId, Priority, QUEUE_MAX, Request, State, TransferQueue,
-};
-use retrovert_updater::transport::{ArtifactDigest, Transport};
+use crate::queue::{Config, EntryId, Priority, QUEUE_MAX, Request, State, TransferQueue};
+use crate::testing::fixture_server::{Body, FixtureServer};
+use crate::transport::{ArtifactDigest, Transport};
 use sha2::{Digest, Sha256};
 
 /// Small enough to arrive in one piece.
@@ -644,7 +640,7 @@ fn a_wrong_digest_fails_and_evicts_the_cache_entry() {
     assert_eq!(fixture.wait_terminal(id), State::Failed);
     assert!(matches!(
         fixture.queue.failure(id),
-        Some(retrovert_updater::queue::Failure::Digest { .. })
+        Some(crate::queue::Failure::Digest { .. })
     ));
 
     // The poisoned bytes must not survive. If they did, the next attempt would
@@ -667,7 +663,7 @@ fn a_wrong_size_fails_and_evicts_the_cache_entry() {
     assert_eq!(fixture.wait_terminal(id), State::Failed);
     assert_eq!(
         fixture.queue.failure(id),
-        Some(retrovert_updater::queue::Failure::Size {
+        Some(crate::queue::Failure::Size {
             expected: len_of(&fixture.small) + 1,
             actual: len_of(&fixture.small),
         })
@@ -824,7 +820,7 @@ fn a_partial_file_that_cannot_be_read_back_fails_and_is_evicted() {
     assert_eq!(fixture.wait_terminal(second), State::Failed);
     assert_eq!(
         fixture.queue.failure(second),
-        Some(retrovert_updater::queue::Failure::Unreadable)
+        Some(crate::queue::Failure::Unreadable)
     );
 
     // The unreadable partial must not survive to be resumed from again.

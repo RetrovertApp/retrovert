@@ -19,7 +19,7 @@ const RECORD_FILE: &str = "checks.json";
 /// How many checks are kept. A client checking on an interval forever must not
 /// grow a file without bound, and the oldest entries are the ones a support
 /// question is least likely to be about.
-pub const MAX_ENTRIES: usize = 64;
+pub(super) const MAX_ENTRIES: usize = 64;
 
 /// What a check concluded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
