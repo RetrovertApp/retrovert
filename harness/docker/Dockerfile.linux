@@ -1,0 +1,28 @@
+# Linux toolchain image for the Retrovert build harness.
+#
+# Rocky 8 fixes the glibc 2.28 compatibility floor at build time: linking
+# against its libc makes every versioned symbol reference <= 2.28 by
+# construction, and the dependency audit then proves it. gcc-toolset-13
+# provides the modern compiler whose libstdc++/libgcc are statically
+# linked (with hidden symbols) into C++ plugins.
+
+FROM rockylinux:8@sha256:9794037624aaa6212aeada1d28861ef5e0a935adaf93e4ef79837119f2a2d04c
+
+RUN dnf -y install epel-release 'dnf-command(config-manager)' \
+    && dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo \
+    && dnf -y install \
+        gcc-toolset-13-gcc \
+        gcc-toolset-13-gcc-c++ \
+        cmake \
+        ninja-build \
+        python3.11 \
+        python3.11-pip \
+        git \
+        binutils \
+        util-linux \
+        gh \
+    && dnf clean all
+
+RUN python3.11 -m pip install --no-cache-dir zstandard==0.23.0 pefile==2024.8.26
+
+ENV PATH="/opt/rh/gcc-toolset-13/root/usr/bin:${PATH}"

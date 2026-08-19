@@ -1,0 +1,179 @@
+# Reusable workflow every rostered plugin repo calls to build its release
+# artifacts. The caller stays a three-line stub; toolchains, flags, checks,
+# packaging, and smokes all live here, versioned by the harness tag the
+# caller references.
+#
+# Caller must grant:
+#   permissions:
+#     contents: write        # upload to the rolling `builds` release
+#     id-token: write        # provenance attestation
+#     attestations: write
+#     packages: read         # pull the toolchain image from GHCR
+name: Build plugin artifacts
+
+on:
+  workflow_call:
+    inputs:
+      upload:
+        description: Upload artifacts to the rolling `builds` release
+        type: boolean
+        default: true
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    container:
+      # Pinned toolchain image; see docker/Dockerfile.linux. Updating this
+      # digest is a harness version bump.
+      image: ghcr.io/retrovertapp/retrovert-build-harness/toolchain-linux@sha256:TOOLCHAIN_DIGEST_PLACEHOLDER
+      options: --privileged
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Check out harness
+        uses: actions/checkout@v4
+        with:
+          repository: RetrovertApp/retrovert-build-harness
+          ref: ${{ github.job_workflow_sha }}
+          path: harness
+
+      - name: Build, check, package, smoke
+        run: |
+          python3.11 harness/scripts/harness_build.py \
+            --repo plugin \
+            --harness harness \
+            --target ${{ matrix.target }} \
+            --work /rvwork \
+            --out out \
+            --sandbox jail
+
+      - name: Name artifact for the builds cache
+        id: name
+        run: |
+          git config --global --add safe.directory "$PWD/plugin"
+          NAME=$(python3.11 -c "import tomllib;print(tomllib.load(open('plugin/harness.toml','rb'))['plugin']['name'])")
+          SHORTSHA=$(git -C plugin rev-parse --short HEAD)
+          case "$JOB_WORKFLOW_REF" in
+            */build-plugin.yml@refs/tags/v*) HV="h${JOB_WORKFLOW_REF##*@refs/tags/v}" ;;
+            *) HV="hdev-$(echo "$JOB_WORKFLOW_SHA" | cut -c1-8)" ;;
+          esac
+          ASSET="${NAME}-${{ matrix.target }}-${SHORTSHA}-${HV}.tar.zst"
+          cp "out/${NAME}-${{ matrix.target }}.tar.zst" "$ASSET"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+        env:
+          JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
+          JOB_WORKFLOW_SHA: ${{ github.job_workflow_sha }}
+
+      - name: Attest build provenance
+        if: inputs.upload && github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.name.outputs.asset }}
+
+      - name: Upload to builds cache release
+        if: inputs.upload && github.event_name != 'pull_request'
+        run: |
+          gh release view builds --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create builds --repo "$GITHUB_REPOSITORY" \
+              --title "builds cache" \
+              --notes "Rolling build cache consumed by the release gather. Not a release channel." \
+              --latest=false || true
+          gh release upload builds --repo "$GITHUB_REPOSITORY" --clobber \
+            "${{ steps.name.outputs.asset }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Check out harness
+        uses: actions/checkout@v4
+        with:
+          repository: RetrovertApp/retrovert-build-harness
+          ref: ${{ github.job_workflow_sha }}
+          path: harness
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned toolchain
+        shell: bash
+        run: |
+          choco install -y --no-progress llvm --version=18.1.8
+          choco install -y --no-progress ninja --version=1.12.1
+          python -m pip install zstandard==0.23.0 pefile==2024.8.26
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build, check, package, smoke
+        shell: bash
+        run: |
+          export PATH="/c/Program Files/LLVM/bin:$PATH"
+          python harness/scripts/harness_build.py \
+            --repo plugin \
+            --harness harness \
+            --target windows-x86_64 \
+            --work "$RUNNER_TEMP/rvwork" \
+            --out out \
+            --sandbox none
+
+      - name: Name artifact for the builds cache
+        id: name
+        shell: bash
+        run: |
+          NAME=$(python -c "import tomllib;print(tomllib.load(open('plugin/harness.toml','rb'))['plugin']['name'])")
+          SHORTSHA=$(git -C plugin rev-parse --short HEAD)
+          case "$JOB_WORKFLOW_REF" in
+            */build-plugin.yml@refs/tags/v*) HV="h${JOB_WORKFLOW_REF##*@refs/tags/v}" ;;
+            *) HV="hdev-$(echo "$JOB_WORKFLOW_SHA" | cut -c1-8)" ;;
+          esac
+          ASSET="${NAME}-windows-x86_64-${SHORTSHA}-${HV}.tar.zst"
+          cp "out/${NAME}-windows-x86_64.tar.zst" "$ASSET"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+        env:
+          JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
+          JOB_WORKFLOW_SHA: ${{ github.job_workflow_sha }}
+
+      - name: Attest build provenance
+        if: inputs.upload && github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.name.outputs.asset }}
+
+      - name: Upload to builds cache release
+        if: inputs.upload && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          gh release view builds --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create builds --repo "$GITHUB_REPOSITORY" \
+              --title "builds cache" \
+              --notes "Rolling build cache consumed by the release gather. Not a release channel." \
+              --latest=false || true
+          gh release upload builds --repo "$GITHUB_REPOSITORY" --clobber \
+            "${{ steps.name.outputs.asset }}"
+        env:
+          GH_TOKEN: ${{ github.token }}

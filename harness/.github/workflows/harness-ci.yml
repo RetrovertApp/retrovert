@@ -1,0 +1,114 @@
+# Harness self-CI: proves the machinery, not any plugin. Runs the full
+# build/check/smoke pipeline twice per target against a pinned playback-spu
+# revision from two different build paths and requires byte-identical
+# artifacts — the determinism guarantee the artifact contract leans on.
+name: Harness CI
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+  workflow_dispatch: {}
+
+env:
+  # Known-good plugin revision the harness validates itself against.
+  SPU_TEST_REV: 3651e0c455eec8e056978a51d052d18d17c642cc
+
+jobs:
+  determinism-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ghcr.io/retrovertapp/retrovert-build-harness/toolchain-linux@sha256:TOOLCHAIN_DIGEST_PLACEHOLDER
+      options: --privileged
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out harness
+        uses: actions/checkout@v4
+        with:
+          path: harness
+
+      - name: Check out playback-spu at the pinned test revision
+        uses: actions/checkout@v4
+        with:
+          repository: RetrovertApp/playback-spu
+          ref: ${{ env.SPU_TEST_REV }}
+          path: plugin
+
+      - name: Build twice from different paths
+        run: |
+          python3.11 harness/scripts/harness_build.py \
+            --repo plugin --harness harness --target ${{ matrix.target }} \
+            --work /rvwork-first --out out-a --sandbox jail
+          python3.11 harness/scripts/harness_build.py \
+            --repo plugin --harness harness --target ${{ matrix.target }} \
+            --work /rvwork-second-longer-path --out out-b --sandbox jail
+
+      - name: Byte-compare
+        run: |
+          A=$(cut -d' ' -f1 out-a/*.sha256)
+          B=$(cut -d' ' -f1 out-b/*.sha256)
+          echo "first:  $A"
+          echo "second: $B"
+          test "$A" = "$B"
+
+  determinism-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Check out harness
+        uses: actions/checkout@v4
+        with:
+          path: harness
+
+      - name: Check out playback-spu at the pinned test revision
+        uses: actions/checkout@v4
+        with:
+          repository: RetrovertApp/playback-spu
+          ref: ${{ env.SPU_TEST_REV }}
+          path: plugin
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned toolchain
+        shell: bash
+        run: |
+          choco install -y --no-progress llvm --version=18.1.8
+          choco install -y --no-progress ninja --version=1.12.1
+          python -m pip install zstandard==0.23.0 pefile==2024.8.26
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build twice from different paths
+        shell: bash
+        run: |
+          export PATH="/c/Program Files/LLVM/bin:$PATH"
+          python harness/scripts/harness_build.py \
+            --repo plugin --harness harness --target windows-x86_64 \
+            --work "$RUNNER_TEMP/rvwork-first" --out out-a --sandbox none
+          python harness/scripts/harness_build.py \
+            --repo plugin --harness harness --target windows-x86_64 \
+            --work "$RUNNER_TEMP/rvwork-second-longer-path" --out out-b --sandbox none
+
+      - name: Byte-compare
+        shell: bash
+        run: |
+          A=$(cut -d' ' -f1 out-a/*.sha256)
+          B=$(cut -d' ' -f1 out-b/*.sha256)
+          echo "first:  $A"
+          echo "second: $B"
+          test "$A" = "$B"
