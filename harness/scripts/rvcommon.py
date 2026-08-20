@@ -96,6 +96,18 @@ def load_harness_toml(repo):
             fail("harness.toml: [[fixtures]] file must be a relative repo path")
         if not re.fullmatch(r"[0-9a-f]{64}", str(f.get("sha256", ""))):
             fail(f"harness.toml: [[fixtures]] {file} needs a lowercase sha256")
+        members = f.get("members", [])
+        if not isinstance(members, list) or not all(
+            isinstance(m, str)
+            and m
+            and not m.startswith(("/", "\\"))
+            and ".." not in m.split("/")
+            for m in members
+        ):
+            fail(
+                f"harness.toml: [[fixtures]] {file} members must be relative "
+                "paths inside the archive"
+            )
     return {
         "name": name,
         "data_entries": data_entries,

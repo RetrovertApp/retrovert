@@ -82,10 +82,12 @@ def extract_generation(archive, dest):
     return dest
 
 
-def fixture_files(repo, cfg):
+def fixture_files(repo, cfg, work):
     # Fixtures are declared by hash in the plugin's own harness.toml, so
     # fixture identity travels with the plugin revision and the harness
-    # holds no per-plugin knowledge.
+    # holds no per-plugin knowledge. An entry with `members` is a zip kept
+    # in unmodified-archive form for its redistribution grant; the listed
+    # members are extracted and smoked in its place.
     files = []
     for f in cfg["fixtures"]:
         path = repo / f["file"]
@@ -93,7 +95,29 @@ def fixture_files(repo, cfg):
             fail(f"declared fixture {f['file']} is missing from the plugin repo")
         if hashlib.sha256(path.read_bytes()).hexdigest() != f["sha256"]:
             fail(f"fixture {f['file']} does not match its declared sha256")
-        files.append(path)
+        members = f.get("members")
+        if members:
+            import zipfile
+
+            dest = work / "fixtures-extracted"
+            dest.mkdir(parents=True, exist_ok=True)
+            try:
+                with zipfile.ZipFile(path) as zf:
+                    for m in members:
+                        try:
+                            data = zf.read(m)
+                        except KeyError:
+                            fail(f"fixture {f['file']} has no member {m}")
+                        out = dest / Path(m).name
+                        out.write_bytes(data)
+                        files.append(out)
+            except zipfile.BadZipFile:
+                fail(f"fixture {f['file']} declares members but is not a zip archive")
+        else:
+            files.append(path)
+    names = [p.name for p in files]
+    if len(set(names)) != len(names):
+        fail(f"fixture file names collide after extraction: {sorted(names)}")
     return files
 
 
@@ -198,7 +222,7 @@ def main():
 
     generation = extract_generation(artifact, work / "generation")
     lib_rel = f"{name}_playback{TARGETS[target]['lib_suffix']}"
-    fixtures = fixture_files(repo, cfg)
+    fixtures = fixture_files(repo, cfg, work)
     run_smoke(host_bin, lib_rel, fixtures, generation, work / "jail", sandbox)
 
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()

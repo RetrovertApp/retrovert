@@ -47,7 +47,10 @@ artifacts must be byte-identical.
 1. Add `harness.toml`: plugin name, payload-data declaration, and at
    least one playback fixture (a redistribution-clean file in the plugin
    repo, declared with its sha256). Fixture identity rides in the plugin
-   revision, so nothing here changes when a plugin joins.
+   revision, so nothing here changes when a plugin joins. A fixture whose
+   redistribution grant requires the unmodified upstream archive may be
+   declared as that zip plus `members = ["<path in zip>"]`; the members
+   are extracted and smoked in the archive's place.
 2. Vendor headers in `include/retrovert/` matching the pinned set.
 3. Ship license texts at the repo root (`LICENSE*`, `COPYING*`, `NOTICE*`
    or a `licenses/` directory).
@@ -66,7 +69,7 @@ permissions:
   packages: read
 jobs:
   build:
-    uses: RetrovertApp/retrovert-build-harness/.github/workflows/build-plugin.yml@v1
+    uses: RetrovertApp/retrovert-build-harness/.github/workflows/build-plugin.yml@v5
 ```
 
 Artifacts land on the repo's rolling `builds` release as

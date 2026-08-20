@@ -15,6 +15,12 @@ env:
   SPU_TEST_REV: 828e70da1d4631d19c7624a10cf8f7b3de8dbb65
 
 jobs:
+  script-selftest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/selftest.py
+
   determinism-linux:
     strategy:
       fail-fast: false
