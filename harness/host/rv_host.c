@@ -463,6 +463,12 @@ static int cmd_play(const char* path, const char* fixture, double target_seconds
 
         RVReadInfo info = plugin->read_data(instance, dest);
 
+        if (info.frame_count > dest.info.frame_count) {
+            fprintf(stderr, "rv_host: read_data returned %u frames for a %u-frame request\n", info.frame_count,
+                    dest.info.frame_count);
+            failed = 1;
+            break;
+        }
         if (info.status == RVReadStatus_Error) {
             fprintf(stderr, "rv_host: read_data reported an error after %.2fs\n", decoded_seconds);
             failed = 1;
