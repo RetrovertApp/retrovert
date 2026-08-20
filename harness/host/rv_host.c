@@ -37,6 +37,9 @@ typedef void* PluginHandle;
 #define MAX_REOPENS 50
 #define MAX_STALLED_READS 1000
 #define READ_FRAMES 4096
+// Alternated with READ_FRAMES so the request cap binds strictly below any
+// plugin's internal render-block size; a plugin ignoring the cap over-returns.
+#define SMALL_READ_FRAMES 777
 // 16-byte frames (F32 stereo) is the widest layout a plugin can produce.
 #define READ_BUFFER_BYTES (READ_FRAMES * 16)
 #define SILENCE_THRESHOLD 0.01
@@ -450,6 +453,7 @@ static int cmd_play(const char* path, const char* fixture, double target_seconds
     int reopens = 0;
     int stalled_reads = 0;
     int failed = 0;
+    uint64_t reads = 0;
 
     while (decoded_seconds < target_seconds) {
         RVReadData dest;
@@ -459,7 +463,7 @@ static int cmd_play(const char* path, const char* fixture, double target_seconds
         dest.info.format.audio_format = RVAudioStreamFormat_S16;
         dest.info.format.channel_count = 2;
         dest.info.format.sample_rate = 48000;
-        dest.info.frame_count = READ_FRAMES;
+        dest.info.frame_count = (reads++ & 1) ? SMALL_READ_FRAMES : READ_FRAMES;
 
         RVReadInfo info = plugin->read_data(instance, dest);
 
