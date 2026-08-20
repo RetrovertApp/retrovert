@@ -97,7 +97,7 @@ def fixture_files(repo, cfg):
     return files
 
 
-def build_jail(jail, host_bin, generation, fixtures):
+def build_jail(jail, host_bin, generation, lib_rel, fixtures):
     if jail.exists():
         shutil.rmtree(jail)
     jail.mkdir(parents=True)
@@ -105,14 +105,19 @@ def build_jail(jail, host_bin, generation, fixtures):
     shutil.copyfile(host_bin, jail / "rv_host")
     os.chmod(jail / "rv_host", 0o755)
 
-    ldd = subprocess.run(["ldd", str(host_bin)], check=True, capture_output=True, text=True).stdout
+    # The jail must satisfy the host's dependencies and the plugin's: on the
+    # glibc-2.28 floor, allowlisted libraries like libpthread/libdl/librt are
+    # real separate objects a plugin may legitimately DT_NEED even though the
+    # host itself does not.
     libs = set()
-    for line in ldd.splitlines():
-        parts = line.split()
-        if "=>" in parts and len(parts) >= 3 and parts[2].startswith("/"):
-            libs.add(parts[2])
-        elif parts and parts[0].startswith("/"):
-            libs.add(parts[0])
+    for binary in (host_bin, generation / lib_rel):
+        ldd = subprocess.run(["ldd", str(binary)], check=True, capture_output=True, text=True).stdout
+        for line in ldd.splitlines():
+            parts = line.split()
+            if "=>" in parts and len(parts) >= 3 and parts[2].startswith("/"):
+                libs.add(parts[2])
+            elif parts and parts[0].startswith("/"):
+                libs.add(parts[0])
     for lib in libs:
         dest = jail / lib.lstrip("/")
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -129,7 +134,7 @@ def build_jail(jail, host_bin, generation, fixtures):
 
 def run_smoke(host_bin, lib_rel, fixtures, generation, jail_root, sandbox):
     if sandbox == "jail":
-        jail = build_jail(jail_root, host_bin, generation, fixtures)
+        jail = build_jail(jail_root, host_bin, generation, lib_rel, fixtures)
         base = ["unshare", "--net", "--pid", "--fork", "chroot", str(jail)]
         run(base + ["/rv_host", "load", f"/generation/{lib_rel}"])
         for f in fixtures:

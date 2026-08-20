@@ -33,6 +33,9 @@ WINDOWS_IMPORT_ALLOWLIST = {
     "kernel32.dll",
     "ntdll.dll",
     "advapi32.dll",
+    # Core-OS since Windows 95; admitted for loopback socketpair IPC
+    # (uade frontend <-> core), not for network use.
+    "ws2_32.dll",
 }
 
 REQUIRED_EXPORTS = {"rv_playback_plugin"}
