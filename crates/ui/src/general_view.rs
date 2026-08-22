@@ -80,7 +80,7 @@ impl GeneralView {
         let scope_height = height - name_height;
 
         let name = snapshot
-            .layout
+            .layout()
             .scope_channels
             .get(channel)
             .and_then(|description| channel_name(&description.name));
@@ -122,7 +122,11 @@ impl GeneralView {
 impl View for GeneralView {
     fn render(&mut self, snapshot: &VizSnapshot) {
         self.draw_header();
-        let channels = snapshot.layout.scope_channels.len().clamp(1, MAX_CHANNELS);
+        let channels = snapshot
+            .layout()
+            .scope_channels
+            .len()
+            .clamp(1, MAX_CHANNELS);
         let grid = Grid::for_channels(channels);
         for channel in 0..channels {
             self.draw_channel(snapshot, channel, grid);

@@ -67,7 +67,7 @@ impl PlayerUi {
         let kind = Views::select(
             context.decoder_name,
             context.media_extension,
-            context.snapshot.layout.pattern_channels.len(),
+            context.snapshot.layout().pattern_channels.len(),
         );
         if let Some(view) = self.views.get_mut(kind) {
             view.render(context.snapshot);
@@ -159,7 +159,7 @@ mod integration_tests {
     fn protracker_view_matches_blessed_png() {
         with_openmpt_snapshot(|snapshot| {
             let first_row_cells =
-                snapshot.layout.columns.len() * snapshot.layout.pattern_channels.len();
+                snapshot.layout().columns.len() * snapshot.layout().pattern_channels.len();
             let first_row_text = snapshot
                 .cells()
                 .iter()

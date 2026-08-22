@@ -131,8 +131,8 @@ impl PatternDisplay {
             height,
             config,
             font,
-            &snapshot.layout.columns,
-            snapshot.layout.pattern_channels.len(),
+            &snapshot.layout().columns,
+            snapshot.layout().pattern_channels.len(),
             position,
             snapshot.cells(),
         );

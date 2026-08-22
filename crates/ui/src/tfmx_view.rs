@@ -87,7 +87,7 @@ impl TfmxView {
     }
 
     fn draw_scopes(&mut self, snapshot: &VizSnapshot) {
-        let channels = snapshot.layout.scope_channels.len().min(MAX_CHANNELS);
+        let channels = snapshot.layout().scope_channels.len().min(MAX_CHANNELS);
         if channels == 0 {
             return;
         }
@@ -110,8 +110,8 @@ impl TfmxView {
         let Some(position) = snapshot.position else {
             return;
         };
-        let channels = snapshot.layout.pattern_channels.len().min(MAX_CHANNELS);
-        let columns = snapshot.layout.columns.len();
+        let channels = snapshot.layout().pattern_channels.len().min(MAX_CHANNELS);
+        let columns = snapshot.layout().columns.len();
         if channels == 0 || columns == 0 {
             return;
         }
@@ -165,7 +165,7 @@ impl TfmxView {
         y: f32,
     ) {
         for (channel, (descriptor, color)) in snapshot
-            .layout
+            .layout()
             .pattern_channels
             .iter()
             .zip(CHANNEL_COLORS)
@@ -207,8 +207,8 @@ impl TfmxView {
             Painter::text(x, y, "--- -- -- ---", self.font, TEXT_DIM);
             return;
         };
-        let snapshot_channels = snapshot.layout.pattern_channels.len();
-        let columns = snapshot.layout.columns.len();
+        let snapshot_channels = snapshot.layout().pattern_channels.len();
+        let columns = snapshot.layout().columns.len();
         let row_offset = (row - position.window_lo) as usize;
         let start = (row_offset * snapshot_channels + channel) * columns;
         let cells = snapshot
@@ -219,8 +219,8 @@ impl TfmxView {
             Painter::text(x, y, "--- -- -- ---", self.font, TEXT_DIM);
             return;
         }
-        let route = note_route(cells, &snapshot.layout.columns, channel);
-        for (cell, descriptor) in cells.iter().zip(snapshot.layout.columns.iter()) {
+        let route = note_route(cells, &snapshot.layout().columns, channel);
+        for (cell, descriptor) in cells.iter().zip(snapshot.layout().columns.iter()) {
             let text = std::str::from_utf8(cell_text(cell)).unwrap_or_default();
             Painter::text(x, y, text, self.font, cell_color(cell, route, current));
             x += f32::from(descriptor.char_width) * FONT_SIZE as f32 * 0.6;

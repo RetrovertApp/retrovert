@@ -2,7 +2,7 @@ use flowi::{
     fit, fixed, row, text_styled, BorderWidthConfig, Color, CornerRadius, Font, FontId, Layout,
     LayoutAlignmentX, LayoutAlignmentY, LayoutBorder, LayoutChildAlignment, LayoutClip,
     LayoutConfig, LayoutDirection, LayoutEndGuard, LayoutPadding, LayoutPlaced, LayoutSizing,
-    Mount, Painter, TextConfig, Vec2,
+    Mount, Painter, StrokeStyle, TextConfig, Vec2,
 };
 use retrovert_host::{
     ffi::playback::{RVColumnKind, RVPatternCell},
@@ -99,7 +99,7 @@ impl V2mView {
     }
 
     fn draw_scopes(&mut self, snapshot: &VizSnapshot) {
-        let channels = displayed_channel_count(snapshot.layout.scope_channels.len());
+        let channels = displayed_channel_count(snapshot.layout().scope_channels.len());
         if channels == 0 {
             return;
         }
@@ -141,8 +141,8 @@ impl V2mView {
         let Some(position) = snapshot.position else {
             return;
         };
-        let channels = displayed_channel_count(snapshot.layout.pattern_channels.len());
-        let columns = snapshot.layout.columns.len();
+        let channels = displayed_channel_count(snapshot.layout().pattern_channels.len());
+        let columns = snapshot.layout().columns.len();
         if channels == 0 || columns == 0 {
             return;
         }
@@ -204,8 +204,8 @@ impl V2mView {
             Painter::text(x, y, "--- .. ...", self.font, TEXT_DIM);
             return;
         };
-        let channels = snapshot.layout.pattern_channels.len();
-        let columns = snapshot.layout.columns.len();
+        let channels = snapshot.layout().pattern_channels.len();
+        let columns = snapshot.layout().columns.len();
         let row_offset = (row - position.window_lo) as usize;
         let start = (row_offset * channels + channel) * columns;
         let cells = snapshot
@@ -217,7 +217,7 @@ impl V2mView {
             return;
         }
 
-        for (cell, descriptor) in cells.iter().zip(snapshot.layout.columns.iter()) {
+        for (cell, descriptor) in cells.iter().zip(snapshot.layout().columns.iter()) {
             let text = std::str::from_utf8(cell_text(cell)).unwrap_or_default();
             Painter::text(
                 x,
@@ -277,6 +277,10 @@ fn header_config() -> LayoutConfig {
                 top: 0,
                 bottom: 10,
                 between_children: 0,
+            },
+            stroke: StrokeStyle {
+                dash_len: 0.0,
+                gap_len: 0.0,
             },
         },
         placed: LayoutPlaced {

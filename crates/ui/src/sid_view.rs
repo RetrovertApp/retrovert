@@ -91,7 +91,7 @@ impl SidView {
     }
 
     fn draw_scopes(&mut self, snapshot: &VizSnapshot) {
-        let channels = snapshot.layout.scope_channels.len().min(MAX_CHANNELS);
+        let channels = snapshot.layout().scope_channels.len().min(MAX_CHANNELS);
         if channels == 0 {
             return;
         }
@@ -118,9 +118,9 @@ impl SidView {
         let Some(position) = snapshot.position else {
             return;
         };
-        let snapshot_channels = snapshot.layout.pattern_channels.len();
+        let snapshot_channels = snapshot.layout().pattern_channels.len();
         let channels = snapshot_channels.min(MAX_CHANNELS);
-        if channels == 0 || snapshot.layout.columns.is_empty() {
+        if channels == 0 || snapshot.layout().columns.is_empty() {
             return;
         }
         let available = HEIGHT - HEADER_HEIGHT - SCOPE_HEIGHT - WAVEFORM_HEIGHT;
@@ -128,7 +128,7 @@ impl SidView {
         let half_visible = visible_rows / 2;
         let channel_width = WIDTH / channels as f32;
         let y = HEADER_HEIGHT + SCOPE_HEIGHT;
-        let column_count = snapshot.layout.columns.len();
+        let column_count = snapshot.layout().columns.len();
 
         for visible_row in 0..visible_rows {
             let row_y = y + visible_row as f32 * LINE_HEIGHT;
@@ -157,7 +157,7 @@ impl SidView {
 
                 let row_offset = (row - position.window_lo) as usize;
                 let mut cell_x = channel_x + 4.0;
-                for (column, descriptor) in snapshot.layout.columns.iter().enumerate() {
+                for (column, descriptor) in snapshot.layout().columns.iter().enumerate() {
                     let index = (row_offset * snapshot_channels + channel) * column_count + column;
                     let Some(cell) = snapshot.cells().get(index) else {
                         continue;
@@ -178,10 +178,10 @@ impl SidView {
 
     fn draw_separators(&self, snapshot: &VizSnapshot) {
         let channels = snapshot
-            .layout
+            .layout()
             .pattern_channels
             .len()
-            .max(snapshot.layout.scope_channels.len())
+            .max(snapshot.layout().scope_channels.len())
             .min(MAX_CHANNELS);
         if channels < 2 {
             return;

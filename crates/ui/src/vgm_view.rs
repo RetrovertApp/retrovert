@@ -101,7 +101,7 @@ impl VgmView {
     }
 
     fn draw_scopes(&mut self, snapshot: &VizSnapshot) {
-        let channels = displayed_channel_count(snapshot.layout.scope_channels.len());
+        let channels = displayed_channel_count(snapshot.layout().scope_channels.len());
         if channels == 0 {
             return;
         }
@@ -124,8 +124,8 @@ impl VgmView {
         let Some(position) = snapshot.position else {
             return;
         };
-        let channels = displayed_channel_count(snapshot.layout.pattern_channels.len());
-        let columns = snapshot.layout.columns.len();
+        let channels = displayed_channel_count(snapshot.layout().pattern_channels.len());
+        let columns = snapshot.layout().columns.len();
         if channels == 0 || columns == 0 {
             return;
         }
@@ -210,8 +210,8 @@ impl VgmView {
             Painter::text(x, y, "--- -- -- ---", self.font, TEXT_DIM);
             return;
         };
-        let snapshot_channels = snapshot.layout.pattern_channels.len();
-        let columns = snapshot.layout.columns.len();
+        let snapshot_channels = snapshot.layout().pattern_channels.len();
+        let columns = snapshot.layout().columns.len();
         let row_offset = (row - position.window_lo) as usize;
         let start = (row_offset * snapshot_channels + channel) * columns;
         let cells = snapshot
@@ -229,7 +229,7 @@ impl VgmView {
             return;
         }
 
-        for (cell, descriptor) in cells.iter().zip(snapshot.layout.columns.iter()) {
+        for (cell, descriptor) in cells.iter().zip(snapshot.layout().columns.iter()) {
             let text = std::str::from_utf8(cell_text(cell)).unwrap_or_default();
             Painter::text(
                 x,

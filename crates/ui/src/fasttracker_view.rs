@@ -184,8 +184,8 @@ impl FastTrackerView {
         let half_visible = layout.visible_rows / 2;
         let line_height = layout.note_font.char_height() as f32;
         let channel_width = (WIDTH - layout.row_number_width) / layout.channels as f32;
-        let column_count = snapshot.layout.columns.len();
-        let snapshot_channels = snapshot.layout.pattern_channels.len();
+        let column_count = snapshot.layout().columns.len();
+        let snapshot_channels = snapshot.layout().pattern_channels.len();
 
         for visible_row in 0..layout.visible_rows {
             let row = i64::from(position.row) - i64::from(half_visible) + i64::from(visible_row);
@@ -215,7 +215,7 @@ impl FastTrackerView {
                 let mut cell_x = layout.row_number_width + channel as f32 * channel_width + 2.0;
                 if let Some(row) = valid_row {
                     let row_offset = (row - position.window_lo) as usize;
-                    for (column, descriptor) in snapshot.layout.columns.iter().enumerate() {
+                    for (column, descriptor) in snapshot.layout().columns.iter().enumerate() {
                         if !column_visible(descriptor.kind, layout.mode) {
                             continue;
                         }
@@ -253,8 +253,8 @@ impl FastTrackerView {
 impl View for FastTrackerView {
     fn render(&mut self, snapshot: &VizSnapshot) {
         let layout = self.layout(
-            snapshot.layout.pattern_channels.len(),
-            &snapshot.layout.columns,
+            snapshot.layout().pattern_channels.len(),
+            &snapshot.layout().columns,
         );
         Painter::rect(0.0, 0.0, WIDTH, HEIGHT, BACKGROUND);
         self.draw_header(layout.channels);
