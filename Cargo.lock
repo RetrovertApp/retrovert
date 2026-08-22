@@ -640,6 +640,7 @@ dependencies = [
 [[package]]
 name = "flowi"
 version = "0.0.0"
+source = "git+ssh://git@github.com/emoon/flowi.git?rev=568aa7516e7b8c9dd0b627df1f9472faae22f6eb#568aa7516e7b8c9dd0b627df1f9472faae22f6eb"
 dependencies = [
  "bytemuck",
  "flowi_macros",
@@ -650,6 +651,7 @@ dependencies = [
 [[package]]
 name = "flowi_macros"
 version = "0.0.0"
+source = "git+ssh://git@github.com/emoon/flowi.git?rev=568aa7516e7b8c9dd0b627df1f9472faae22f6eb#568aa7516e7b8c9dd0b627df1f9472faae22f6eb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -659,6 +661,7 @@ dependencies = [
 [[package]]
 name = "flowi_sys"
 version = "0.0.0"
+source = "git+ssh://git@github.com/emoon/flowi.git?rev=568aa7516e7b8c9dd0b627df1f9472faae22f6eb#568aa7516e7b8c9dd0b627df1f9472faae22f6eb"
 dependencies = [
  "bitflags 2.13.1",
  "cmake",
@@ -1302,6 +1305,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 [[package]]
 name = "retrovert-host"
 version = "0.1.0"
+source = "git+https://github.com/RetrovertApp/retrovert_api.git?rev=d2e53fba46372d0af5278d6b4ec28f40d01a75ea#d2e53fba46372d0af5278d6b4ec28f40d01a75ea"
 dependencies = [
  "cc",
  "libc",
@@ -1361,6 +1365,7 @@ dependencies = [
 [[package]]
 name = "retrovert-tuf"
 version = "0.1.0"
+source = "git+https://github.com/RetrovertApp/retrovert-updater.git?rev=95a0f514a237a1c4f4b69e1e6386ef337b8a16ad#95a0f514a237a1c4f4b69e1e6386ef337b8a16ad"
 dependencies = [
  "ed25519-dalek",
  "getrandom 0.3.4",
@@ -1378,6 +1383,7 @@ dependencies = [
 [[package]]
 name = "retrovert-updater"
 version = "0.1.0"
+source = "git+https://github.com/RetrovertApp/retrovert-updater.git?rev=95a0f514a237a1c4f4b69e1e6386ef337b8a16ad#95a0f514a237a1c4f4b69e1e6386ef337b8a16ad"
 dependencies = [
  "hex",
  "jiff",

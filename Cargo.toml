@@ -14,11 +14,20 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
-flowi = { path = "../flowi/rust/flowi" }
+# flowi and retrovert-host are pinned by revision so this workspace resolves
+# from a plain clone (and as a cargo git dependency) with no sibling checkouts.
+# For local cross-repository development, redirect them back to sibling paths
+# with a [patch] block in the consuming workspace, e.g.:
+#
+#   [patch."ssh://git@github.com/emoon/flowi.git"]
+#   flowi = { path = "../flowi/rust/flowi" }
+#   [patch."https://github.com/RetrovertApp/retrovert_api.git"]
+#   retrovert-host = { path = "../retrovert/retrovert_api/rust/retrovert-host" }
+flowi = { git = "ssh://git@github.com/emoon/flowi.git", rev = "568aa7516e7b8c9dd0b627df1f9472faae22f6eb" }
 log = "0.4"
-retrovert-host = { path = "../retrovert/retrovert_api/rust/retrovert-host" }
+retrovert-host = { git = "https://github.com/RetrovertApp/retrovert_api.git", rev = "d2e53fba46372d0af5278d6b4ec28f40d01a75ea" }
 retrovert-player = { path = "crates/retrovert-player" }
-retrovert-updater = { path = "../retrovert/retrovert-updater/crates/retrovert-updater" }
+retrovert-updater = { git = "https://github.com/RetrovertApp/retrovert-updater.git", rev = "95a0f514a237a1c4f4b69e1e6386ef337b8a16ad" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
