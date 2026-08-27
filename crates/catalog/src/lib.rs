@@ -291,7 +291,10 @@ impl PluginCatalog {
     /// Put a working set back after `refused` did not activate.
     fn recover(&mut self, backend: &mut PlayerBackend, refused: &str) {
         let Some(previous) = self.loaded.clone() else {
-            // Still booting: nothing was resident, so try the next newest.
+            // Still booting: nothing was resident to fall back to. The refused
+            // set is still loaded, so drop it before trying the next newest —
+            // leaving it in place would let `mount` play on a refused set.
+            let _ = backend.swap_plugins(&[]);
             self.pending = self.boot_queue.pop();
             return;
         };

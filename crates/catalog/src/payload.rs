@@ -64,7 +64,10 @@ impl PayloadStore {
         }
         let libraries = Self::libraries(&dir, artifacts);
         for library in &libraries {
-            if !library.is_file() {
+            // `symlink_metadata` does not follow links: an archive that ships
+            // the library as a symlink would otherwise redirect the load
+            // outside the tree, which `unpack` does not prevent.
+            if !fs::symlink_metadata(library).is_ok_and(|meta| meta.is_file()) {
                 return Err(format!(
                     "{} is missing from the extracted payload",
                     library.display()
@@ -101,8 +104,10 @@ impl PayloadStore {
                 .map_err(|e| format!("could not open {}: {e}", archive.display()))?;
             let decoder = zstd::stream::read::Decoder::new(opened)
                 .map_err(|e| format!("could not decode {}: {e}", archive.display()))?;
-            // `unpack` refuses entries that would escape the directory, so a
-            // hostile archive cannot write outside its own staging tree.
+            // `unpack` refuses entries that would *write* outside the staging
+            // tree, but it creates symlinks with their target verbatim, so the
+            // tree can still contain a link that points out of it. `ensure`
+            // rejects a library that is not a regular file for that reason.
             tar::Archive::new(decoder)
                 .unpack(&staging)
                 .map_err(|e| format!("could not unpack {}: {e}", archive.display()))?;
@@ -223,6 +228,38 @@ mod tests {
         let store = PayloadStore::new(dir.path().join("payloads"));
         let refused = store.ensure("gen-a", &generation_dir, &[installed("spu", "spu.tar.zst")]);
         assert!(refused.is_err(), "{refused:?}");
+    }
+
+    #[test]
+    fn a_library_that_is_a_symlink_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let generation_dir = dir.path().join("generation");
+        fs::create_dir_all(&generation_dir).unwrap();
+        let outside = dir.path().join("outside.so");
+        fs::write(&outside, b"a library the archive does not own").unwrap();
+
+        // `unpack` creates this link verbatim: the target escapes the tree
+        // even though nothing was written outside it.
+        let mut builder = tar::Builder::new(Vec::new());
+        let mut header = tar::Header::new_gnu();
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_link_name(&outside).unwrap();
+        header.set_cksum();
+        builder
+            .append_data(&mut header, lib_name("spu"), std::io::empty())
+            .unwrap();
+        let archive =
+            zstd::stream::encode_all(builder.into_inner().unwrap().as_slice(), 0).unwrap();
+        fs::write(generation_dir.join("spu.tar.zst"), archive).unwrap();
+
+        let store = PayloadStore::new(dir.path().join("payloads"));
+        let refused = store.ensure("gen-a", &generation_dir, &[installed("spu", "spu.tar.zst")]);
+        assert!(
+            refused.is_err(),
+            "a symlinked library must not load: {refused:?}"
+        );
     }
 
     #[test]

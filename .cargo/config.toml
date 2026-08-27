@@ -1,4 +1,0 @@
-[net]
-# flowi is a private repository fetched over ssh; delegate to the git CLI so
-# the local ssh configuration (keys, agent) is used.
-git-fetch-with-cli = true
