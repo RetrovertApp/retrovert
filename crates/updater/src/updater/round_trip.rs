@@ -425,9 +425,9 @@ fn expired_channel_metadata_is_refused_until_a_resign_clears_it() {
     let mut channel = FixtureChannel::init(now());
     channel.publish(&release.manifest, now());
 
-    // Timestamp metadata is signed for 14 days; a fortnight later nobody has
+    // Timestamp metadata is signed for 90 days; a day past that nobody has
     // re-signed it.
-    let late = days_on(15);
+    let late = days_on(91);
     let client = Client::new();
     {
         let updater = client.updater(&channel, &release, true, late);

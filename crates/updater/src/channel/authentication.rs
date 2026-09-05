@@ -195,9 +195,9 @@ fn expired_metadata_is_refused() {
     let mut fixture = FixtureChannel::init(now());
     fixture.publish(&manifest_bytes(1, "abc1234"), now());
 
-    // Timestamp metadata is signed for 14 days; a fortnight later nobody has
+    // Timestamp metadata is signed for 90 days; a day past that nobody has
     // re-signed it.
-    let late = days_on(15);
+    let late = days_on(91);
     let err = channel_at(&fixture, trust.path(), late)
         .authenticate()
         .unwrap_err();
