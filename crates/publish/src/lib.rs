@@ -23,5 +23,5 @@ pub use keys::KeyStore;
 pub use publish::{PublishReport, publish};
 pub use pull::{PullReport, pull};
 pub use resign::{ResignReport, resign};
-pub use verify::{Generation, HttpChannel, verify};
+pub use verify::{Chain, Generation, HttpChannel, LocalChannel, check, verify};
 pub use workspace::Workspace;

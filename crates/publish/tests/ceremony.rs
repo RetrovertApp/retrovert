@@ -301,3 +301,92 @@ fn a_generated_holder_key_is_readable_only_by_its_owner() {
         0o600
     );
 }
+
+/// `check` is the only thing a ceremony can run: no network, no published
+/// generation, and the same client library a device runs.
+mod check {
+    use super::{ceremony_keys, workspace};
+    use crate::common::{now, read};
+
+    use retrovert_publish::{check, init};
+    use retrovert_tuf::RoleName;
+    use std::process::Command;
+
+    #[test]
+    fn it_reports_the_threshold_the_ceremony_produced() {
+        let (_dir, workspace) = workspace();
+        init(&workspace, &ceremony_keys(2, &[0, 1]), now(), false).unwrap();
+
+        let chain = check(&workspace, now()).unwrap();
+
+        assert_eq!(chain.root_threshold, 2);
+        assert_eq!(chain.root_key_ids.len(), 3);
+        assert_eq!(chain.root_signatures, 2);
+        assert_eq!(
+            chain.roles.iter().map(|r| r.role).collect::<Vec<_>>(),
+            RoleName::ALL,
+            "a refreshed chain establishes all four roles"
+        );
+        for role in &chain.roles {
+            assert_eq!(role.version, 1);
+        }
+    }
+
+    /// The check has to fail on a root that does not meet its own bar, or it
+    /// is not a check. A signature is replaced with one made over other bytes,
+    /// which is what a signer using the wrong key would leave behind.
+    #[test]
+    fn it_refuses_a_root_that_no_longer_meets_its_threshold() {
+        let (_dir, workspace) = workspace();
+        init(&workspace, &ceremony_keys(2, &[0, 1]), now(), false).unwrap();
+
+        let path = workspace.channel().metadata_dir().join("root.json");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&read(&workspace, "root.json")).unwrap();
+        // One of the two signatures is now noise; a 2-of-3 with one good
+        // signature must not verify.
+        value["signatures"][0]["sig"] = "00".repeat(64).into();
+        std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+
+        assert!(
+            check(&workspace, now()).is_err(),
+            "one valid signature must not satisfy a threshold of two"
+        );
+    }
+
+    #[test]
+    fn the_cli_reports_the_chain_without_touching_a_network() {
+        let (_dir, workspace) = workspace();
+        // The binary reads the real clock, so the channel is dated by it too:
+        // `check` enforces expiry like any client, and a channel dated to the
+        // fixed test instant is long past its 14 days.
+        init(
+            &workspace,
+            &ceremony_keys(2, &[0, 1]),
+            jiff::Timestamp::now(),
+            false,
+        )
+        .unwrap();
+
+        let output = Command::new(env!("CARGO_BIN_EXE_retrovert-publish"))
+            .arg("check")
+            .arg(workspace.path())
+            .output()
+            .unwrap();
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            stdout.contains("root:     2 of 3 key(s), 2 signature(s)"),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("verified: the chain refreshes against its own root"),
+            "{stdout}"
+        );
+    }
+}

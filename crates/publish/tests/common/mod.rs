@@ -13,7 +13,8 @@ use std::thread;
 
 use jiff::Timestamp;
 use retrovert_publish::{
-    Error, InitReport, KeySet, ONLINE_ROLES, ReleaseHost, Result, RootKeys, Workspace, init,
+    Error, InitReport, KeySet, LocalChannel, ONLINE_ROLES, ReleaseHost, Result, RootKeys,
+    Workspace, init,
 };
 use retrovert_tuf::KeyPair;
 use sigstore_tuf::transport::FetchFuture;
@@ -70,57 +71,18 @@ pub fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
-/// Serves a channel's `metadata/` and `targets/` directories to `sigstore-tuf`
-/// the way an HTTP mirror would expose its two base URLs, offline.
-pub struct ChannelRepository {
-    metadata: PathBuf,
-    targets: PathBuf,
-}
-
-impl ChannelRepository {
-    pub fn new(workspace: &Workspace) -> Self {
-        let channel = workspace.channel();
-        Self {
-            metadata: channel.metadata_dir(),
-            targets: channel.targets_dir(),
-        }
-    }
-}
-
-fn read_limited(path: &Path, max_length: u64) -> sigstore_tuf::Result<Option<Vec<u8>>> {
-    match std::fs::read(path) {
-        Ok(bytes) if bytes.len() as u64 > max_length => Err(sigstore_tuf::Error::Transport(
-            format!("{} exceeds max length {max_length}", path.display()),
-        )),
-        Ok(bytes) => Ok(Some(bytes)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(sigstore_tuf::Error::Transport(e.to_string())),
-    }
-}
-
-impl Repository for ChannelRepository {
-    fn fetch_metadata<'a>(&'a self, name: &'a str, max_length: u64) -> FetchFuture<'a> {
-        let result = read_limited(&self.metadata.join(name), max_length);
-        Box::pin(async move { result })
-    }
-
-    fn fetch_target<'a>(&'a self, path: &'a str, max_length: u64) -> FetchFuture<'a> {
-        let result = read_limited(&self.targets.join(path), max_length);
-        Box::pin(async move { result })
-    }
-}
-
 /// Bootstrap `sigstore-tuf` from the channel's root and run its refresh
-/// workflow, offline.
+/// workflow, offline, through the same directory reader the `check` command
+/// uses.
 ///
-/// [`ChannelRepository`] is synchronous under an async trait, so the futures
-/// are always ready and a trivial `block_on` is enough — no runtime needed.
+/// [`LocalChannel`] is synchronous under an async trait, so the futures are
+/// always ready and a trivial `block_on` is enough — no runtime needed.
 pub fn refresh_with_sigstore_tuf(
     workspace: &Workspace,
     at: Timestamp,
 ) -> sigstore_tuf::Result<Updater> {
     let root = read(workspace, "root.json");
-    let mut updater = Updater::new(ChannelRepository::new(workspace), &root)?;
+    let mut updater = Updater::new(LocalChannel::new(&workspace.channel()), &root)?;
     pollster::block_on(updater.refresh(at))?;
     Ok(updater)
 }

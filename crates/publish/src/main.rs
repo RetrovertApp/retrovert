@@ -6,8 +6,8 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use jiff::Timestamp;
 use retrovert_publish::{
-    GitHubReleases, KeySet, Repo, Result, RootKeys, SignedRole, Workspace, init, keys, publish,
-    pull, remote, resign, verify,
+    GitHubReleases, KeySet, Repo, Result, RootKeys, SignedRole, Workspace, check, init, keys,
+    publish, pull, remote, resign, verify,
 };
 use retrovert_tuf::KeyPair;
 
@@ -39,6 +39,9 @@ enum Command {
 
     /// Fetch and verify a live channel's current generation over HTTPS.
     Verify(VerifyArgs),
+
+    /// Verify a workspace's own channel offline, against the root it carries.
+    Check(CheckArgs),
 }
 
 /// Where a workspace's channel is served from. Both flags or neither: without
@@ -195,6 +198,13 @@ struct PullArgs {
 }
 
 #[derive(Debug, Args)]
+struct CheckArgs {
+    /// Workspace whose channel is read. Nothing here reaches a network, which
+    /// is what makes this the check a root ceremony can run.
+    dir: PathBuf,
+}
+
+#[derive(Debug, Args)]
 struct VerifyArgs {
     /// The channel's base URL.
     base_url: String,
@@ -222,6 +232,7 @@ fn run(cli: &Cli) -> Result<()> {
         Command::Resign(args) => run_resign(args),
         Command::Pull(args) => run_pull(args),
         Command::Verify(args) => run_verify(args),
+        Command::Check(args) => run_check(args),
     }
 }
 
@@ -358,6 +369,25 @@ fn run_verify(args: &VerifyArgs) -> Result<()> {
     );
     println!("artifacts: {}", generation.artifacts);
     println!("generation: {}", generation.generation_id);
+    Ok(())
+}
+
+fn run_check(args: &CheckArgs) -> Result<()> {
+    let workspace = Workspace::new(&args.dir);
+    let chain = check(&workspace, Timestamp::now())?;
+
+    println!("channel:  {}", workspace.channel().path().display());
+    println!(
+        "root:     {} of {} key(s), {} signature(s)",
+        chain.root_threshold,
+        chain.root_key_ids.len(),
+        chain.root_signatures
+    );
+    for key_id in &chain.root_key_ids {
+        println!("  key id  {key_id}");
+    }
+    report_expiries(&chain.roles);
+    println!("verified: the chain refreshes against its own root");
     Ok(())
 }
 

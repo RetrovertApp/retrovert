@@ -96,6 +96,18 @@ the time anyone reads the error: signing below the threshold being written, and
 signing with a key the root does not authorize. Omitting `--root-threshold`
 authorizes every named key rather than defaulting to one.
 
+`check` reads the result back through the same TUF client a device runs, off the
+directory and without a network — the only check available in a room with no
+network and no published generation, and the one worth running before anybody
+leaves it:
+
+```console
+$ retrovert-publish check <workspace>
+root:     2 of 3 key(s), 2 signature(s)
+...
+verified: the chain refreshes against its own root
+```
+
 `root.json` expires 12 months after it is signed, and no online key can renew
 it. Renewing it is another gathering of the same holders, and the channel stops
 verifying if it does not happen.
