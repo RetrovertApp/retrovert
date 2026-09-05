@@ -1,13 +1,13 @@
 name: Re-sign dev channel
 
-# A channel expires whether or not anyone publishes to it: timestamp 14 days
-# after each signature, snapshot and targets 60. Twice weekly leaves three
-# missed runs of slack before the shortest of those lapses — and once it has
-# lapsed the job cannot recover the channel on its own, because `pull` refuses
-# metadata that no longer verifies.
+# A channel expires whether or not anyone publishes to it: timestamp 90 days
+# after each signature, snapshot and targets a year. Monthly leaves two missed
+# runs of slack before the shortest of those lapses, and once it has lapsed the
+# job cannot recover the channel on its own, because `pull` refuses metadata
+# that no longer verifies.
 on:
   schedule:
-    - cron: '17 5 * * 1,4'
+    - cron: '17 5 1 * *'
   workflow_dispatch:
 
 permissions:

@@ -182,7 +182,7 @@ fn a_pull_refuses_a_channel_that_has_already_lapsed() {
     let (_dir, published, _job_dir, job) = channel_and_job("rev-1");
     let server = serve_channel(&published);
 
-    let err = pull(&job, server.base_url(), after(now(), 90.days())).unwrap_err();
+    let err = pull(&job, server.base_url(), after(now(), 400.days())).unwrap_err();
 
     assert!(
         matches!(err, Error::Client(sigstore_tuf::Error::Expired { .. })),

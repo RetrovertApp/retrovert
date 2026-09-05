@@ -359,7 +359,7 @@ mod check {
         let (_dir, workspace) = workspace();
         // The binary reads the real clock, so the channel is dated by it too:
         // `check` enforces expiry like any client, and a channel dated to the
-        // fixed test instant is long past its 14 days.
+        // fixed test instant is long past its 90 days.
         init(
             &workspace,
             &ceremony_keys(2, &[0, 1]),

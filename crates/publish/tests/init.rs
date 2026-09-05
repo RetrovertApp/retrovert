@@ -112,19 +112,19 @@ fn expiries_match_the_decided_policy() {
 
     assert_eq!(
         signed_field(&workspace, "root.json", "expires"),
-        expected_expiry(12.months())
+        expected_expiry(10.years())
     );
     assert_eq!(
         signed_field(&workspace, "1.targets.json", "expires"),
-        expected_expiry(60.days())
+        expected_expiry(365.days())
     );
     assert_eq!(
         signed_field(&workspace, "1.snapshot.json", "expires"),
-        expected_expiry(60.days())
+        expected_expiry(365.days())
     );
     assert_eq!(
         signed_field(&workspace, "timestamp.json", "expires"),
-        expected_expiry(14.days())
+        expected_expiry(90.days())
     );
 }
 
@@ -139,9 +139,9 @@ fn expiry_is_enforced_by_the_client() {
             .timestamp()
     };
 
-    refresh_with_sigstore_tuf(&workspace, at(13.days())).expect("inside the timestamp lifetime");
-    refresh_with_sigstore_tuf(&workspace, at(15.days()))
-        .expect_err("past the 14-day timestamp expiry");
+    refresh_with_sigstore_tuf(&workspace, at(89.days())).expect("inside the timestamp lifetime");
+    refresh_with_sigstore_tuf(&workspace, at(91.days()))
+        .expect_err("past the 90-day timestamp expiry");
 }
 
 #[test]

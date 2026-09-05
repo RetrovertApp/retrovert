@@ -65,9 +65,9 @@ fn a_resign_advances_every_online_role_to_a_full_lifetime() {
     assert_eq!(
         roles(&report),
         [
-            (RoleName::Targets, 3, expiry_of(when, 60.days())),
-            (RoleName::Snapshot, 3, expiry_of(when, 60.days())),
-            (RoleName::Timestamp, 3, expiry_of(when, 14.days())),
+            (RoleName::Targets, 3, expiry_of(when, 365.days())),
+            (RoleName::Snapshot, 3, expiry_of(when, 365.days())),
+            (RoleName::Timestamp, 3, expiry_of(when, 90.days())),
         ],
         "every online role takes a fresh lifetime dated from the re-sign"
     );
@@ -182,10 +182,10 @@ fn the_layout_the_scheduled_job_assembles_by_hand_is_the_one_the_tools_read() {
 #[test]
 fn a_resign_recovers_a_channel_whose_metadata_has_already_lapsed() {
     let (_dir, workspace) = published_channel("rev-1");
-    let lapsed = after(now(), 90.days());
+    let lapsed = after(now(), 400.days());
 
     refresh_with_sigstore_tuf(&workspace, lapsed)
-        .expect_err("90 days out, the 14-day timestamp is long gone");
+        .expect_err("400 days out, the 90-day timestamp is long gone");
 
     resign(&workspace, lapsed).unwrap();
 
@@ -309,7 +309,7 @@ fn a_resign_pushed_onto_a_live_channel_supersedes_the_expiring_metadata() {
     assert_eq!(updater.trusted().timestamp().unwrap().version, 3);
     assert_eq!(
         updater.trusted().timestamp().unwrap().expires,
-        expiry_of(when, 14.days())
+        expiry_of(when, 90.days())
     );
 }
 
