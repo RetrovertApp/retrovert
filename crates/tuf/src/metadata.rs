@@ -165,26 +165,88 @@ pub struct Root {
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
+/// The keys one role is authorized with, and how many of them a metadata file
+/// needs signatures from.
+///
+/// `keys` may hold more than `threshold` demands — that is what a 2-of-3 root
+/// is, and it is the whole reason this is a list rather than a key. The keys
+/// beyond the threshold are what makes a lost or compromised holder survivable
+/// without re-rooting every client.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoleAuthorization {
+    /// The role being authorized.
+    pub role: RoleName,
+    /// Every key allowed to sign for it.
+    pub keys: Vec<PublicKey>,
+    /// How many distinct ones a valid signature set needs.
+    pub threshold: u32,
+}
+
+impl RoleAuthorization {
+    /// Authorize `role` with a single key at threshold 1.
+    #[must_use]
+    pub fn single(role: RoleName, key: PublicKey) -> Self {
+        Self {
+            role,
+            keys: vec![key],
+            threshold: 1,
+        }
+    }
+
+    /// The role's key IDs, sorted, and the keys indexed by them.
+    ///
+    /// Rejects a threshold no key set can meet and a key authorized twice.
+    /// Both produce a role that verifies differently from how it reads — the
+    /// first never verifies at all, the second silently lowers the threshold —
+    /// and both are far cheaper to catch here than at a ceremony's end.
+    fn resolve(&self) -> Result<(RoleKeys, BTreeMap<String, PublicKey>)> {
+        if self.threshold == 0 || self.threshold as usize > self.keys.len() {
+            return Err(Error::UnsatisfiableThreshold {
+                role: self.role,
+                threshold: self.threshold,
+                keys: self.keys.len(),
+            });
+        }
+
+        let mut indexed = BTreeMap::new();
+        for key in &self.keys {
+            let key_id = key.key_id()?;
+            if indexed.insert(key_id.clone(), key.clone()).is_some() {
+                return Err(Error::DuplicateRoleKey {
+                    role: self.role,
+                    key_id,
+                });
+            }
+        }
+
+        Ok((
+            RoleKeys {
+                keyids: indexed.keys().cloned().collect(),
+                threshold: self.threshold,
+                extra: BTreeMap::new(),
+            },
+            indexed,
+        ))
+    }
+}
+
 impl Root {
-    /// Build a root that authorizes exactly one key per role at threshold 1.
-    pub fn single_key_per_role(
+    /// Build a root from an explicit authorization per role.
+    ///
+    /// The `keys` map is shared across roles by key ID, so a key authorized for
+    /// two roles is stored once — which is what the TUF object shape asks for,
+    /// not a deduplication convenience.
+    pub fn new(
         version: u64,
         expires: String,
-        role_keys: &[(RoleName, PublicKey)],
+        authorizations: &[RoleAuthorization],
     ) -> Result<Self> {
         let mut keys = BTreeMap::new();
         let mut roles = BTreeMap::new();
-        for (role, public) in role_keys {
-            let key_id = public.key_id()?;
-            roles.insert(
-                role.as_str().to_string(),
-                RoleKeys {
-                    keyids: vec![key_id.clone()],
-                    threshold: 1,
-                    extra: BTreeMap::new(),
-                },
-            );
-            keys.insert(key_id, public.clone());
+        for authorization in authorizations {
+            let (role_keys, role_key_map) = authorization.resolve()?;
+            roles.insert(authorization.role.as_str().to_string(), role_keys);
+            keys.extend(role_key_map);
         }
         Ok(Self {
             type_: RoleName::Root.as_str().to_string(),
@@ -196,6 +258,19 @@ impl Root {
             roles,
             extra: BTreeMap::new(),
         })
+    }
+
+    /// Build a root that authorizes exactly one key per role at threshold 1.
+    pub fn single_key_per_role(
+        version: u64,
+        expires: String,
+        role_keys: &[(RoleName, PublicKey)],
+    ) -> Result<Self> {
+        let authorizations: Vec<RoleAuthorization> = role_keys
+            .iter()
+            .map(|(role, public)| RoleAuthorization::single(*role, public.clone()))
+            .collect();
+        Self::new(version, expires, &authorizations)
     }
 }
 
@@ -506,6 +581,135 @@ mod tests {
                 }
             }"#,
         );
+    }
+
+    fn seeded(byte: u8) -> KeyPair {
+        KeyPair::from_seed(&[byte; 32])
+    }
+
+    fn expires() -> String {
+        "2027-01-01T00:00:00Z".to_string()
+    }
+
+    /// The shape a root ceremony produces: three holders, any two of whom can
+    /// sign, while the online roles stay single-key.
+    #[test]
+    fn root_authorizes_several_keys_at_a_threshold() {
+        let holders: Vec<KeyPair> = (10..13).map(seeded).collect();
+        let mut authorizations = vec![RoleAuthorization {
+            role: RoleName::Root,
+            keys: holders.iter().map(KeyPair::public).collect(),
+            threshold: 2,
+        }];
+        authorizations.extend(
+            [RoleName::Targets, RoleName::Snapshot, RoleName::Timestamp]
+                .into_iter()
+                .enumerate()
+                .map(|(i, role)| {
+                    RoleAuthorization::single(role, seeded(u8::try_from(i).unwrap()).public())
+                }),
+        );
+
+        let root = Root::new(1, expires(), &authorizations).unwrap();
+
+        let entry = &root.roles["root"];
+        assert_eq!(entry.threshold, 2);
+        assert_eq!(entry.keyids.len(), 3);
+        // Six keys in total: three root holders and one per online role.
+        assert_eq!(root.keys.len(), 6);
+        for key_id in &entry.keyids {
+            assert!(root.keys.contains_key(key_id));
+        }
+        assert!(entry.keyids.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    /// A key authorized for two roles is one entry in `keys`, referenced from
+    /// both roles.
+    #[test]
+    fn a_key_shared_between_roles_is_stored_once() {
+        let shared = seeded(4);
+        let root = Root::new(
+            1,
+            expires(),
+            &[
+                RoleAuthorization::single(RoleName::Snapshot, shared.public()),
+                RoleAuthorization::single(RoleName::Timestamp, shared.public()),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(root.keys.len(), 1);
+        assert_eq!(
+            root.roles["snapshot"].keyids,
+            root.roles["timestamp"].keyids
+        );
+    }
+
+    #[test]
+    fn a_threshold_no_key_set_could_meet_is_refused() {
+        let error = Root::new(
+            1,
+            expires(),
+            &[RoleAuthorization {
+                role: RoleName::Root,
+                keys: vec![seeded(1).public(), seeded(2).public()],
+                threshold: 3,
+            }],
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::UnsatisfiableThreshold {
+                role: RoleName::Root,
+                threshold: 3,
+                keys: 2
+            }
+        ));
+    }
+
+    #[test]
+    fn a_zero_threshold_is_refused() {
+        let error = Root::new(
+            1,
+            expires(),
+            &[RoleAuthorization {
+                role: RoleName::Root,
+                keys: vec![seeded(1).public()],
+                threshold: 0,
+            }],
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::UnsatisfiableThreshold { threshold: 0, .. }
+        ));
+    }
+
+    /// Writing the same holder twice would read as a 2-of-3 and verify as a
+    /// 2-of-2 — the one mistake at a ceremony that leaves no trace.
+    #[test]
+    fn a_key_authorized_twice_for_one_role_is_refused() {
+        let holder = seeded(1);
+        let error = Root::new(
+            1,
+            expires(),
+            &[RoleAuthorization {
+                role: RoleName::Root,
+                keys: vec![holder.public(), seeded(2).public(), holder.public()],
+                threshold: 2,
+            }],
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::DuplicateRoleKey {
+                role: RoleName::Root,
+                ..
+            }
+        ));
     }
 
     #[test]

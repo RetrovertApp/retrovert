@@ -26,6 +26,28 @@ pub enum Error {
     #[error("duplicate signing key id {0}")]
     DuplicateKeyId(String),
 
+    /// A role was authorized with a threshold no set of its keys can meet, so
+    /// nothing it ever signs would verify.
+    #[error("role {role} needs {threshold} signatures but authorizes {keys} key(s)")]
+    UnsatisfiableThreshold {
+        /// The role whose authorization is unsatisfiable.
+        role: crate::metadata::RoleName,
+        /// Signatures the role would demand.
+        threshold: u32,
+        /// Keys it authorizes.
+        keys: usize,
+    },
+
+    /// A role authorized the same key twice. A duplicate never adds threshold
+    /// weight, so a 2-of-3 written this way is really a 2-of-2.
+    #[error("role {role} authorizes key id {key_id} twice")]
+    DuplicateRoleKey {
+        /// The role holding the duplicate.
+        role: crate::metadata::RoleName,
+        /// The key ID appearing more than once.
+        key_id: String,
+    },
+
     /// A release-set manifest was malformed or failed schema validation.
     #[error("invalid manifest: {0}")]
     Manifest(String),
