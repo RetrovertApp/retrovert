@@ -12,8 +12,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use jiff::Timestamp;
-use retrovert_publish::{Error, InitReport, KeySet, ReleaseHost, Result, Workspace, init};
-use retrovert_tuf::{KeyPair, RoleName};
+use retrovert_publish::{
+    Error, InitReport, KeySet, ONLINE_ROLES, ReleaseHost, Result, RootKeys, Workspace, init,
+};
+use retrovert_tuf::KeyPair;
 use sigstore_tuf::transport::FetchFuture;
 use sigstore_tuf::{Repository, Updater};
 use tempfile::TempDir;
@@ -26,7 +28,7 @@ pub fn now() -> Timestamp {
 /// Fixed keys, so publisher output is reproducible byte for byte.
 pub fn seeded_keys() -> KeySet {
     KeySet {
-        root: KeyPair::from_seed(&[1u8; 32]),
+        root: RootKeys::Generated(KeyPair::from_seed(&[1u8; 32])),
         targets: KeyPair::from_seed(&[2u8; 32]),
         snapshot: KeyPair::from_seed(&[3u8; 32]),
         timestamp: KeyPair::from_seed(&[4u8; 32]),
@@ -132,8 +134,8 @@ pub fn online_only_workspace(root: &[u8]) -> (TempDir, Workspace) {
     let store = workspace.keys();
     store.create_dirs().unwrap();
     let keys = seeded_keys();
-    for role in [RoleName::Targets, RoleName::Snapshot, RoleName::Timestamp] {
-        store.write(role, keys.get(role)).unwrap();
+    for role in ONLINE_ROLES {
+        store.write(role, keys.get(role).unwrap()).unwrap();
     }
     std::fs::remove_dir_all(store.offline_dir()).unwrap();
 

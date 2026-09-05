@@ -110,6 +110,21 @@ pub enum Error {
     /// write.
     #[error("the channel verified without producing {0}")]
     IncompleteRefresh(String),
+
+    /// Fewer root keys were present than the threshold being written demands,
+    /// so the root would be signed below its own bar and verify nowhere.
+    #[error("{present} root key(s) present, but the root is written at threshold {threshold}")]
+    NotEnoughRootSigners {
+        /// Private root keys handed to the run.
+        present: usize,
+        /// Signatures the root being written will demand.
+        threshold: u32,
+    },
+
+    /// A private root key was handed in that the root does not authorize —
+    /// most likely a holder's key that was left out of the public set.
+    #[error("root key id {0} is signing but is not authorized by the root being written")]
+    UnauthorizedRootSigner(String),
 }
 
 impl Error {

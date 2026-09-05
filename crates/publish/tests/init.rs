@@ -214,7 +214,10 @@ fn private_keys_are_split_by_trust_boundary_and_reload() {
     for role in RoleName::ALL {
         let pem = std::fs::read_to_string(store.key_path(role)).unwrap();
         assert!(pem.starts_with("-----BEGIN PRIVATE KEY-----"));
-        assert_eq!(store.read(role).unwrap().public(), keys.get(role).public());
+        assert_eq!(
+            store.read(role).unwrap().public(),
+            keys.get(role).unwrap().public()
+        );
     }
 }
 

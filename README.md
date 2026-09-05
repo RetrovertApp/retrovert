@@ -51,6 +51,55 @@ $ retrovert-publish verify \
     dev/root.json
 ```
 
+## Creating a channel
+
+`init` writes a channel's four roles into an empty workspace and signs the
+first, empty generation. The online roles are always keyed there — those keys
+end up in a protected CI environment, so generating them on the publisher's
+machine is the whole of their custody story. How `root` is keyed is the choice:
+
+```console
+$ retrovert-publish init <workspace>
+```
+
+keys the root here too and writes it to `keys/offline/`. That root is only as
+safe as the directory holding it, which is what a disposable channel like `dev`
+wants and what a production channel must never be.
+
+A production root is held by several people, no one of whom can sign alone.
+Each holder generates a key on a machine that never joins a network:
+
+```console
+$ retrovert-publish keygen alice.pem
+key id:   b56c9549...
+private:  alice.pem            # stays on the holder's own storage
+public:   alice.pub.json       # the only half that travels
+```
+
+The public halves are brought together, and a threshold of the private halves
+is present just long enough to sign the root:
+
+```console
+$ retrovert-publish init <workspace> \
+    --root-key alice.pub.json --root-key bob.pub.json --root-key carol.pub.json \
+    --root-threshold 2 \
+    --root-sign-with alice.pem --root-sign-with bob.pem
+root:     2 of 3 key(s)
+```
+
+Nothing is written to `keys/offline/` — there is no root key here to write.
+Carol's key is authorized without being present, which is the point of holding
+three: losing a holder costs a re-sign rather than a re-root of every client.
+
+Two mistakes are refused before a byte is written, because a ceremony is over by
+the time anyone reads the error: signing below the threshold being written, and
+signing with a key the root does not authorize. Omitting `--root-threshold`
+authorizes every named key rather than defaulting to one.
+
+`root.json` expires 12 months after it is signed, and no online key can renew
+it. Renewing it is another gathering of the same holders, and the channel stops
+verifying if it does not happen.
+
 ## Publishing
 
 The signing keys live outside this repository, in the publisher's workspace

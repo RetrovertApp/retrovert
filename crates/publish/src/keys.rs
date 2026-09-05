@@ -9,7 +9,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use retrovert_tuf::{KeyPair, RoleName};
+use retrovert_tuf::{KeyPair, PublicKey, RoleName};
 use zeroize::Zeroizing;
 
 use crate::error::{Error, Result};
@@ -80,45 +80,71 @@ impl KeyStore {
     }
 
     /// Write `role`'s private key as PKCS#8 PEM, readable only by its owner.
-    ///
-    /// Any existing entry is unlinked rather than truncated, so a symlink left
-    /// at this path cannot redirect the key elsewhere and the owner-only mode
-    /// applies from the moment the file exists rather than after the secret has
-    /// already been written. See [`KeyStore`] for the non-Unix caveat.
     pub fn write(&self, role: RoleName, key: &KeyPair) -> Result<()> {
-        let path = self.key_path(role);
-        let pem = key.to_pkcs8_pem()?;
-
-        match std::fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(Error::io(&path, e)),
-        }
-
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = options.open(&path).map_err(|e| Error::io(&path, e))?;
-        file.write_all(pem.as_bytes())
-            .map_err(|e| Error::io(&path, e))?;
-        // `mode` above is masked by the process umask, which can only clear
-        // bits; normalize so the stored mode does not depend on the caller's
-        // environment.
-        restrict(&path, 0o600)
+        write_private_key(&self.key_path(role), key)
     }
 
     /// Read `role`'s private key back.
     pub fn read(&self, role: RoleName) -> Result<KeyPair> {
-        let path = self.key_path(role);
-        // Zeroizing so the plaintext PEM does not linger in the heap after the
-        // key is parsed, matching the write path.
-        let pem = Zeroizing::new(std::fs::read_to_string(&path).map_err(|e| Error::io(&path, e))?);
-        Ok(KeyPair::from_pkcs8_pem(&pem)?)
+        read_private_key(&self.key_path(role))
     }
+}
+
+/// Write `key` to `path` as PKCS#8 PEM, readable only by its owner.
+///
+/// Any existing entry is unlinked rather than truncated, so a symlink left at
+/// this path cannot redirect the key elsewhere and the owner-only mode applies
+/// from the moment the file exists rather than after the secret has already
+/// been written. See [`KeyStore`] for the non-Unix caveat.
+pub fn write_private_key(path: &Path, key: &KeyPair) -> Result<()> {
+    let pem = key.to_pkcs8_pem()?;
+
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(Error::io(path, e)),
+    }
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path).map_err(|e| Error::io(path, e))?;
+    file.write_all(pem.as_bytes())
+        .map_err(|e| Error::io(path, e))?;
+    // `mode` above is masked by the process umask, which can only clear bits;
+    // normalize so the stored mode does not depend on the caller's environment.
+    restrict(path, 0o600)
+}
+
+/// Read a PKCS#8 PEM private key.
+pub fn read_private_key(path: &Path) -> Result<KeyPair> {
+    // Zeroizing so the plaintext PEM does not linger in the heap after the key
+    // is parsed, matching the write path.
+    let pem = Zeroizing::new(std::fs::read_to_string(path).map_err(|e| Error::io(path, e))?);
+    Ok(KeyPair::from_pkcs8_pem(&pem)?)
+}
+
+/// Write a TUF public key object as JSON.
+///
+/// This is the half of a ceremony key that travels: a holder generates a key
+/// on a machine that never joins a network, and only this file leaves it.
+pub fn write_public_key(path: &Path, key: &PublicKey) -> Result<()> {
+    let mut json = serde_json::to_vec_pretty(key).map_err(retrovert_tuf::Error::from)?;
+    json.push(b'\n');
+    std::fs::write(path, json).map_err(|e| Error::io(path, e))
+}
+
+/// Read a TUF public key object written by [`write_public_key`].
+pub fn read_public_key(path: &Path) -> Result<PublicKey> {
+    let bytes = std::fs::read(path).map_err(|e| Error::io(path, e))?;
+    serde_json::from_slice(&bytes).map_err(|source| Error::Metadata {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 #[cfg(unix)]

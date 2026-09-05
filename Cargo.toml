@@ -14,7 +14,7 @@ repository = "https://github.com/RetrovertApp/retrovert-channels"
 # widely-consumed side; it lives there and is pinned here by revision. Bumping
 # this is what adopts a metadata format change on the publisher side, so it is
 # deliberate and reviewed rather than a floating branch reference.
-retrovert-tuf = { git = "https://github.com/RetrovertApp/retrovert-updater", rev = "0ef7a7fb776887a380e77f77527f12ef77455ed7" }
+retrovert-tuf = { git = "https://github.com/RetrovertApp/retrovert-updater", rev = "3fda6765f85c4d84aae377c1f1b7679f5a8cb7c7" }
 
 clap = { version = "4.6", features = ["derive"] }
 jiff = "0.2"

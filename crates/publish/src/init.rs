@@ -1,12 +1,16 @@
-//! `init`: create a channel from nothing, signed by a fresh disposable root.
+//! `init`: create a channel from nothing and sign its first generation.
+//!
+//! The online roles are always keyed here: their keys end up in a protected CI
+//! environment, so generating them on the publisher's machine is the whole of
+//! their custody story. The root is not, necessarily — see [`RootKeys`].
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use jiff::Timestamp;
 use retrovert_tuf::{
-    Channel, KeyPair, MetaFile, PublicKey, RoleName, Root, Signed, Snapshot, Targets, policy,
-    published_names,
+    Channel, KeyPair, MetaFile, PublicKey, RoleAuthorization, RoleName, Root, Signed, Snapshot,
+    Targets, policy, published_names,
 };
 
 use crate::error::{Error, Result};
@@ -15,11 +19,109 @@ use crate::workspace::Workspace;
 /// The version every role carries in a freshly initialized channel.
 pub const INITIAL_VERSION: u64 = 1;
 
-/// One signing key per top-level role.
+/// The roles whose keys a publish or a re-sign uses, and which therefore live
+/// in the workspace's `keys/online/`.
+pub const ONLINE_ROLES: [RoleName; 3] =
+    [RoleName::Targets, RoleName::Snapshot, RoleName::Timestamp];
+
+/// How a channel's `root` role is keyed.
+///
+/// The two variants are two custody stories, not two code paths for one story.
+/// A generated root is as safe as the directory it was written to, which is
+/// what a disposable test channel wants and what a production one must never
+/// be. Held keys never touch this machine: the holders generate them
+/// separately, only the public halves are brought together to describe the
+/// role, and a threshold of the private halves is present just long enough to
+/// sign the root this creates.
+#[derive(Debug, Clone)]
+pub enum RootKeys {
+    /// One key generated here, authorized alone at threshold 1, and written to
+    /// the workspace's offline key store.
+    Generated(KeyPair),
+
+    /// Keys held outside this workspace, a threshold of which is present to
+    /// sign. Nothing is written to `keys/offline/`: there is nothing here to
+    /// write.
+    Held {
+        /// Every key the `root` role will accept.
+        authorized: Vec<PublicKey>,
+        /// How many distinct ones a valid root signature set needs.
+        threshold: u32,
+        /// The private halves present at the ceremony. At least `threshold` of
+        /// them, each one of `authorized`.
+        signing: Vec<KeyPair>,
+    },
+}
+
+impl RootKeys {
+    /// How the `root` role is described in the root metadata.
+    fn authorization(&self) -> RoleAuthorization {
+        match self {
+            Self::Generated(key) => RoleAuthorization::single(RoleName::Root, key.public()),
+            Self::Held {
+                authorized,
+                threshold,
+                ..
+            } => RoleAuthorization {
+                role: RoleName::Root,
+                keys: authorized.clone(),
+                threshold: *threshold,
+            },
+        }
+    }
+
+    /// The keys that sign the root being created.
+    ///
+    /// Checks that they can actually meet the threshold, and that every one of
+    /// them is authorized. A root signed by too few keys, or by a key the role
+    /// does not list, is a root no client accepts — and the ceremony that
+    /// produced it is over by the time anyone finds out, so it is checked
+    /// before a byte is written rather than after.
+    fn signers(&self) -> Result<Vec<&KeyPair>> {
+        match self {
+            Self::Generated(key) => Ok(vec![key]),
+            Self::Held {
+                authorized,
+                threshold,
+                signing,
+            } => {
+                if signing.len() < *threshold as usize {
+                    return Err(Error::NotEnoughRootSigners {
+                        present: signing.len(),
+                        threshold: *threshold,
+                    });
+                }
+
+                let authorized_ids = authorized
+                    .iter()
+                    .map(PublicKey::key_id)
+                    .collect::<retrovert_tuf::Result<Vec<_>>>()?;
+                for key in signing {
+                    let key_id = key.key_id()?;
+                    if !authorized_ids.contains(&key_id) {
+                        return Err(Error::UnauthorizedRootSigner(key_id));
+                    }
+                }
+                Ok(signing.iter().collect())
+            }
+        }
+    }
+
+    /// The key to store in `keys/offline/`, when the channel has one.
+    fn to_store(&self) -> Option<&KeyPair> {
+        match self {
+            Self::Generated(key) => Some(key),
+            Self::Held { .. } => None,
+        }
+    }
+}
+
+/// The keys a channel is initialized with: one per online role, plus however
+/// the root is keyed.
 #[derive(Debug, Clone)]
 pub struct KeySet {
-    /// Signs `root`; kept offline.
-    pub root: KeyPair,
+    /// How `root` is keyed.
+    pub root: RootKeys,
     /// Signs `targets`.
     pub targets: KeyPair,
     /// Signs `snapshot`.
@@ -29,32 +131,42 @@ pub struct KeySet {
 }
 
 impl KeySet {
-    /// Generate four independent keys from the OS random source.
+    /// Generate four independent keys from the OS random source, root included.
     pub fn generate() -> Result<Self> {
         Ok(Self {
-            root: KeyPair::generate()?,
+            root: RootKeys::Generated(KeyPair::generate()?),
             targets: KeyPair::generate()?,
             snapshot: KeyPair::generate()?,
             timestamp: KeyPair::generate()?,
         })
     }
 
-    /// The key that signs `role`.
+    /// The key this set holds for `role`, if it holds one.
+    ///
+    /// `None` for `root` when the root keys are held elsewhere — which is the
+    /// question a caller writing a key store is really asking.
     #[must_use]
-    pub fn get(&self, role: RoleName) -> &KeyPair {
+    pub fn get(&self, role: RoleName) -> Option<&KeyPair> {
         match role {
-            RoleName::Root => &self.root,
-            RoleName::Targets => &self.targets,
-            RoleName::Snapshot => &self.snapshot,
-            RoleName::Timestamp => &self.timestamp,
+            RoleName::Root => self.root.to_store(),
+            RoleName::Targets => Some(&self.targets),
+            RoleName::Snapshot => Some(&self.snapshot),
+            RoleName::Timestamp => Some(&self.timestamp),
         }
     }
 
-    fn public_keys(&self) -> Vec<(RoleName, PublicKey)> {
-        RoleName::ALL
-            .iter()
-            .map(|role| (*role, self.get(*role).public()))
-            .collect()
+    /// How every role is authorized in the root metadata.
+    fn authorizations(&self) -> Vec<RoleAuthorization> {
+        let mut authorizations = vec![self.root.authorization()];
+        authorizations.extend(ONLINE_ROLES.into_iter().map(|role| {
+            RoleAuthorization::single(
+                role,
+                self.get(role)
+                    .expect("an online role is always keyed here")
+                    .public(),
+            )
+        }));
+        authorizations
     }
 }
 
@@ -65,8 +177,10 @@ pub struct InitReport {
     pub metadata: Vec<PathBuf>,
     /// Private-key files written.
     pub keys: Vec<PathBuf>,
-    /// The root key's TUF key ID — the fingerprint clients pin.
-    pub root_key_id: String,
+    /// The `root` role's TUF key IDs, sorted — the fingerprints clients pin.
+    pub root_key_ids: Vec<String>,
+    /// How many of them a root signature set needs.
+    pub root_threshold: u32,
 }
 
 /// Initialize `workspace` as a channel signed by `keys`, dated `now`.
@@ -83,10 +197,27 @@ pub fn init(
         return Err(Error::NotEmpty(workspace.path().to_path_buf()));
     }
 
+    // The root payload is built and its signers checked before anything is
+    // written. A root whose threshold no key set could meet, or which is signed
+    // by a key it never authorized, must not leave a half-made channel and a
+    // set of private keys behind it — a ceremony is over by the time anyone
+    // reads the error.
+    let root_metadata = Root::new(
+        INITIAL_VERSION,
+        policy::expires(RoleName::Root, now)?,
+        &keys.authorizations(),
+    )?;
+    let root_signers = keys.root.signers()?;
+    let root_role = root_metadata.roles[RoleName::Root.as_str()].clone();
+
     let store = workspace.keys();
     store.create_dirs()?;
+    let mut written_keys = Vec::new();
     for role in RoleName::ALL {
-        store.write(role, keys.get(role))?;
+        if let Some(key) = keys.get(role) {
+            store.write(role, key)?;
+            written_keys.push(store.key_path(role));
+        }
     }
 
     let channel = workspace.channel();
@@ -107,15 +238,7 @@ pub fn init(
 
     // Signing order is the publication order: a role is signed only after
     // everything it pins, so timestamp lands last and commits the set.
-    let root = Signed::new(
-        Root::single_key_per_role(
-            INITIAL_VERSION,
-            policy::expires(RoleName::Root, now)?,
-            &keys.public_keys(),
-        )?,
-        &[&keys.root],
-    )?
-    .to_json()?;
+    let root = Signed::new(root_metadata, &root_signers)?.to_json()?;
 
     let targets = Signed::new(
         Targets::new(
@@ -163,8 +286,9 @@ pub fn init(
 
     Ok(InitReport {
         metadata: written,
-        keys: RoleName::ALL.iter().map(|r| store.key_path(*r)).collect(),
-        root_key_id: keys.root.key_id()?,
+        keys: written_keys,
+        root_key_ids: root_role.keyids,
+        root_threshold: root_role.threshold,
     })
 }
 

@@ -6,9 +6,10 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use jiff::Timestamp;
 use retrovert_publish::{
-    GitHubReleases, KeySet, Repo, Result, SignedRole, Workspace, init, publish, pull, remote,
-    resign, verify,
+    GitHubReleases, KeySet, Repo, Result, RootKeys, SignedRole, Workspace, init, keys, publish,
+    pull, remote, resign, verify,
 };
+use retrovert_tuf::KeyPair;
 
 #[derive(Debug, Parser)]
 #[command(name = "retrovert-publish", version, about, long_about = None)]
@@ -19,7 +20,10 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Create a channel and a fresh disposable test root in an empty directory.
+    /// Generate one signing key, for a root holder to keep.
+    Keygen(KeygenArgs),
+
+    /// Create a channel in an empty directory.
     Init(InitArgs),
 
     /// Publish a release-set manifest as the channel's next generation.
@@ -61,6 +65,70 @@ impl HostArgs {
 }
 
 #[derive(Debug, Args)]
+struct KeygenArgs {
+    /// Where the PKCS#8 PEM private key is written, owner-only.
+    private: PathBuf,
+
+    /// Where the TUF public key object is written. Defaults to the private
+    /// key's path with a `.pub.json` extension — the only half that travels.
+    #[arg(long, value_name = "FILE")]
+    public: Option<PathBuf>,
+}
+
+/// How the channel's `root` role is keyed.
+///
+/// With no flags the root key is generated here and stored in the workspace,
+/// which is a disposable channel's whole custody story. The flags are the
+/// ceremony: the role is described by public keys generated elsewhere, and the
+/// private halves in the room sign the root this writes.
+#[derive(Debug, Args)]
+struct RootArgs {
+    /// A public key the `root` role authorizes. Repeat once per holder.
+    #[arg(long = "root-key", value_name = "FILE", requires = "sign_with")]
+    keys: Vec<PathBuf>,
+
+    /// How many root signatures a client must see. Defaults to all authorized
+    /// keys, so a threshold is never lower than it looks by omission.
+    #[arg(long = "root-threshold", value_name = "N", requires = "keys")]
+    threshold: Option<u32>,
+
+    /// A private root key present to sign with. Repeat once per key in the
+    /// room; at least `--root-threshold` of them.
+    #[arg(long = "root-sign-with", value_name = "FILE", requires = "keys")]
+    sign_with: Vec<PathBuf>,
+}
+
+impl RootArgs {
+    /// How the root is keyed, reading whatever key files were named.
+    fn resolve(&self) -> Result<RootKeys> {
+        if self.keys.is_empty() {
+            return Ok(RootKeys::Generated(KeyPair::generate()?));
+        }
+        let authorized = self
+            .keys
+            .iter()
+            .map(|path| keys::read_public_key(path))
+            .collect::<Result<Vec<_>>>()?;
+        let signing = self
+            .sign_with
+            .iter()
+            .map(|path| keys::read_private_key(path))
+            .collect::<Result<Vec<_>>>()?;
+        // Omitting the threshold authorizes nothing weaker than the key list:
+        // a root that quietly needs one of three signatures is the mistake this
+        // default exists to make impossible.
+        let threshold = self
+            .threshold
+            .unwrap_or_else(|| u32::try_from(authorized.len()).unwrap_or(u32::MAX));
+        Ok(RootKeys::Held {
+            authorized,
+            threshold,
+            signing,
+        })
+    }
+}
+
+#[derive(Debug, Args)]
 struct InitArgs {
     /// Workspace to create: `repository/` is publishable, `keys/` is not.
     dir: PathBuf,
@@ -68,6 +136,9 @@ struct InitArgs {
     /// Initialize even if the directory already has contents.
     #[arg(long)]
     force: bool,
+
+    #[command(flatten)]
+    root: RootArgs,
 
     #[command(flatten)]
     host: HostArgs,
@@ -145,6 +216,7 @@ fn main() -> ExitCode {
 
 fn run(cli: &Cli) -> Result<()> {
     match &cli.command {
+        Command::Keygen(args) => run_keygen(args),
         Command::Init(args) => run_init(args),
         Command::Publish(args) => run_publish(args),
         Command::Resign(args) => run_resign(args),
@@ -216,16 +288,46 @@ fn run_pull(args: &PullArgs) -> Result<()> {
     Ok(())
 }
 
+fn run_keygen(args: &KeygenArgs) -> Result<()> {
+    let key = KeyPair::generate()?;
+    let public_path = args
+        .public
+        .clone()
+        .unwrap_or_else(|| args.private.with_extension("pub.json"));
+
+    keys::write_private_key(&args.private, &key)?;
+    keys::write_public_key(&public_path, &key.public())?;
+
+    println!("key id:   {}", key.key_id()?);
+    println!("private:  {}", args.private.display());
+    println!("public:   {}", public_path.display());
+    #[cfg(not(unix))]
+    println!("warning:  this platform has no owner-only enforcement; restrict that file yourself");
+    Ok(())
+}
+
 fn run_init(args: &InitArgs) -> Result<()> {
     let workspace = Workspace::new(&args.dir);
-    let keys = KeySet::generate()?;
+    let keys = KeySet {
+        root: args.root.resolve()?,
+        targets: KeyPair::generate()?,
+        snapshot: KeyPair::generate()?,
+        timestamp: KeyPair::generate()?,
+    };
     let report = init(&workspace, &keys, Timestamp::now(), args.force)?;
 
     println!("channel:  {}", workspace.channel().path().display());
     for path in &report.metadata {
         println!("  wrote   {}", path.display());
     }
-    println!("root key id: {}", report.root_key_id);
+    println!(
+        "root:     {} of {} key(s)",
+        report.root_threshold,
+        report.root_key_ids.len()
+    );
+    for key_id in &report.root_key_ids {
+        println!("  key id  {key_id}");
+    }
     println!(
         "keys:     {} — do not publish; the root key belongs in offline storage",
         workspace.keys().path().display()

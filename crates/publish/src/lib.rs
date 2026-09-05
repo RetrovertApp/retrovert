@@ -18,7 +18,7 @@ pub mod workspace;
 pub use chain::SignedRole;
 pub use error::{Error, Result};
 pub use host::{GitHubReleases, ReleaseHost, Repo};
-pub use init::{InitReport, KeySet, init};
+pub use init::{InitReport, KeySet, ONLINE_ROLES, RootKeys, init};
 pub use keys::KeyStore;
 pub use publish::{PublishReport, publish};
 pub use pull::{PullReport, pull};
