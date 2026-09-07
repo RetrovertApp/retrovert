@@ -11,6 +11,7 @@
 //!
 //! > play <path|index>   mount media (bare index picks from FILES)
 //! > stop                drop the session
+//! > seek <ms>           move the playhead, when the decoder can
 //! > status              catalog, updater, and playback state
 //! > check               ask the channel now
 //! > quit
@@ -47,6 +48,7 @@ const WORKER_SLEEP: Duration = Duration::from_millis(2);
 enum Command {
     Play(PathBuf),
     Stop,
+    Seek(i64),
     Status,
     Check,
     Quit,
@@ -231,6 +233,17 @@ fn worker_main(options: &Options, ring: &Arc<Mutex<VecDeque<f32>>>, commands: &R
                 Err(e) => eprintln!("could not play {}: {e}", path.display()),
             },
             Ok(Command::Stop) => backend.close(),
+            Ok(Command::Seek(ms)) => match backend.seek(ms) {
+                Some(reached) => {
+                    // The queued audio belongs to where the song was.
+                    match ring.lock() {
+                        Ok(mut ring) => ring.clear(),
+                        Err(poisoned) => poisoned.into_inner().clear(),
+                    }
+                    println!("seeked to {reached} ms");
+                }
+                None => eprintln!("{} cannot seek this song", backend.plugin_name()),
+            },
             Ok(Command::Status) => print_status(&backend, &catalog),
             Ok(Command::Check) => catalog.check_now(),
             Ok(Command::Quit) => return,
@@ -287,10 +300,11 @@ fn top_up(backend: &mut PlayerBackend, ring: &Arc<Mutex<VecDeque<f32>>>) {
 fn print_status(backend: &PlayerBackend, catalog: &PluginCatalog) {
     let updater = catalog.updater_status();
     println!(
-        "playback: {:?} plugin '{}' media '{}'",
+        "playback: {:?} plugin '{}' media '{}' at {} ms",
         backend.status(),
         backend.plugin_name(),
-        backend.media_extension()
+        backend.media_extension(),
+        backend.position_ms().unwrap_or(0),
     );
     println!(
         "catalog: active {} pending {}",
@@ -331,6 +345,13 @@ fn repl(commands: &Sender<Command>, files: &[PathBuf]) {
         let command = match (words.next(), words.next()) {
             (Some("play"), Some(what)) => Command::Play(resolve_file(files, what)),
             (Some("stop"), _) => Command::Stop,
+            (Some("seek"), Some(ms)) => match ms.parse::<i64>() {
+                Ok(ms) => Command::Seek(ms),
+                Err(_) => {
+                    eprintln!("seek takes whole milliseconds");
+                    continue;
+                }
+            },
             (Some("status"), _) => Command::Status,
             (Some("check"), _) => Command::Check,
             (Some("quit") | Some("exit"), _) => break,

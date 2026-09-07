@@ -86,6 +86,13 @@ pub trait PlaybackBackend {
     fn can_handle_extension(&self, extension: &str) -> bool;
     /// Decodes at most `frames` and lends the produced interleaved samples.
     fn render(&mut self, frames: u32) -> Result<&[f32], BackendError>;
+    /// Moves the playhead to `position_ms`, reporting where the decoder landed.
+    ///
+    /// `None` when nothing is mounted, when the decoder cannot seek, or when it
+    /// refuses the request.
+    fn seek(&mut self, position_ms: i64) -> Option<i64>;
+    /// Reports how far into the mounted song the delivered output has reached.
+    fn position_ms(&self) -> Option<i64>;
     /// Returns the layout required to allocate a caller-owned capture slot.
     fn visualization_layout(&self) -> Option<&Arc<VizLayout>>;
     /// Captures the current visualization into a compatible caller-owned slot.
@@ -269,6 +276,28 @@ impl PlaybackBackend for PlayerBackend {
         Ok(chunk.samples)
     }
 
+    fn seek(&mut self, position_ms: i64) -> Option<i64> {
+        let rate = u64::from(self.target.sample_rate);
+        let session = self.session.as_mut()?;
+        let reached = session.player.seek(position_ms)?;
+        // The frame counter is what the visualization is stamped with, so it
+        // follows the playhead rather than counting decodes.
+        session.output_frame = u64::try_from(reached).unwrap_or(0).saturating_mul(rate) / 1_000;
+        if session.status == PlaybackStatus::Finished {
+            session.status = PlaybackStatus::Playing;
+        }
+        Some(reached)
+    }
+
+    fn position_ms(&self) -> Option<i64> {
+        let rate = u64::from(self.target.sample_rate);
+        let session = self.session.as_ref()?;
+        if rate == 0 {
+            return Some(0);
+        }
+        i64::try_from(session.output_frame.saturating_mul(1_000) / rate).ok()
+    }
+
     fn visualization_layout(&self) -> Option<&Arc<VizLayout>> {
         self.session
             .as_ref()
@@ -352,6 +381,15 @@ mod tests {
         let rendered = backend.render(2_048);
         assert!(rendered.is_ok(), "{rendered:?}");
         assert!(rendered.is_ok_and(|samples| !samples.is_empty()));
+        // Position tracks the output delivered, and a decoder that seeks rebases it.
+        // A decoder that refuses is reporting a real limitation, not a failure.
+        assert_eq!(backend.position_ms(), Some(2_048 * 1_000 / 48_000));
+        if let Some(reached) = backend.seek(5_000) {
+            assert_eq!(backend.position_ms(), Some(reached));
+            let rendered = backend.render(2_048);
+            assert!(rendered.is_ok(), "{rendered:?}");
+            assert!(rendered.is_ok_and(|samples| !samples.is_empty()));
+        }
         assert_eq!(backend.plugin_name(), expected_name);
         let Some(layout) = backend.visualization_layout().cloned() else {
             panic!("{expected_name} did not publish a visualization layout");

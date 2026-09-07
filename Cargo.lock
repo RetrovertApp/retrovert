@@ -1212,7 +1212,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 [[package]]
 name = "retrovert-host"
 version = "0.1.0"
-source = "git+https://github.com/RetrovertApp/retrovert_api.git?rev=d2e53fba46372d0af5278d6b4ec28f40d01a75ea#d2e53fba46372d0af5278d6b4ec28f40d01a75ea"
+source = "git+https://github.com/RetrovertApp/retrovert_api.git?rev=36e0f66fa61e83d0532e1cce1c34b37c9a111a5b#36e0f66fa61e83d0532e1cce1c34b37c9a111a5b"
 dependencies = [
  "cc",
  "libc",

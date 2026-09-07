@@ -21,7 +21,7 @@ publish = false
 #   [patch."https://github.com/RetrovertApp/retrovert_api.git"]
 #   retrovert-host = { path = "../retrovert/retrovert_api/rust/retrovert-host" }
 log = "0.4"
-retrovert-host = { git = "https://github.com/RetrovertApp/retrovert_api.git", rev = "d2e53fba46372d0af5278d6b4ec28f40d01a75ea" }
+retrovert-host = { git = "https://github.com/RetrovertApp/retrovert_api.git", rev = "36e0f66fa61e83d0532e1cce1c34b37c9a111a5b" }
 retrovert-player = { path = "crates/retrovert-player" }
 retrovert-updater = { git = "https://github.com/RetrovertApp/retrovert-updater.git", rev = "95a0f514a237a1c4f4b69e1e6386ef337b8a16ad" }
 
