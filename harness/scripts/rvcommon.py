@@ -36,11 +36,17 @@ GLIBC_MAX_VERSION = (2, 28)
 
 # Core-OS System32 allowlist (case-insensitive). Compiler-runtime DLLs
 # (vcruntime*/msvcp*/ucrt*) are forbidden by omission: /MT is mandatory.
+#
+# winmm is the Windows multimedia API: waveOut*/waveIn* and the timeBeginPeriod
+# family. It has shipped in System32 since Windows 95, on every edition
+# including Server Core, so it belongs to the same core OS as kernel32 and
+# carries none of the redistributable risk this list exists to keep out.
 WINDOWS_IMPORT_ALLOWLIST = {
     "kernel32.dll",
     "ntdll.dll",
     "advapi32.dll",
     "ws2_32.dll",
+    "winmm.dll",
 }
 
 REQUIRED_EXPORTS = {"rv_playback_plugin"}
