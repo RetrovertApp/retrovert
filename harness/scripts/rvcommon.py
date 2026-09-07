@@ -16,9 +16,16 @@ TARGETS = {
 
 # Linux payloads may depend on the base runtime only; C++/compiler runtimes
 # are statically linked, so libstdc++/libgcc_s are deliberately absent.
+#
+# libmvec is glibc's vectorized math library, shipped and versioned with glibc
+# itself since 2.22 and so present at the 2.28 floor. GCC emits calls into it
+# when it auto-vectorizes a loop containing libm calls, which a plugin gets from
+# its own -ffast-math rather than from any choice of ours; it belongs to the same
+# base runtime as libc and libm.
 LINUX_NEEDED_ALLOWLIST = {
     "libc.so.6",
     "libm.so.6",
+    "libmvec.so.1",
     "libpthread.so.0",
     "libdl.so.2",
     "librt.so.1",
