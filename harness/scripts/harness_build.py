@@ -1,9 +1,10 @@
 """Build one plugin repo into a validated, deterministic release artifact.
 
 This is the single entry point the reusable workflow (and local runs) use:
-configure/build through the harness floor, run every per-artifact check,
-package, and smoke through rv_host. Any failure exits non-zero — an
-artifact only exists if every check of this harness version passed.
+configure/build through the harness floor, run the plugin's own unit tests,
+run every per-artifact check, package, and smoke through rv_host. Any
+failure exits non-zero -- an artifact only exists if every check of this
+harness version passed.
 
 The Linux playback smoke runs inside a sealed jail (chroot + unshared
 network) when --sandbox jail is given: the only readable trees are the
@@ -16,6 +17,7 @@ import argparse
 import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -63,6 +65,37 @@ def cmake_configure_args(target, harness):
 def build_cmake(src, build_dir, extra_args):
     run(["cmake", "-S", src, "-B", build_dir] + extra_args)
     run(["cmake", "--build", build_dir])
+
+
+def registered_test_count(build_dir):
+    """How many tests the plugin's build tree registers with ctest.
+
+    Asked with "ctest -N", which lists without running and is spelled the same
+    way on every ctest we build against -- unlike --test-dir/--no-tests, which
+    are newer than the cmake in some of our images.
+    """
+    out = subprocess.run(
+        ["ctest", "-N"], cwd=build_dir, capture_output=True, text=True
+    ).stdout
+    m = re.search(r"^Total Tests:\s*(\d+)", out, re.M)
+    return int(m.group(1)) if m else 0
+
+
+def run_ctest(build_dir):
+    """Run the plugin's own unit tests, failing the build if any fail.
+
+    Registering no tests is not a failure: most plugins are a thin shim over a
+    third-party decoder and have nothing of their own to test. Registering
+    tests and never running them is the failure this guards against -- CI
+    compiled playback-uade's uadechannel_tests for months without once
+    executing it. Say which case we are in rather than passing silently.
+    """
+    count = registered_test_count(build_dir)
+    if count == 0:
+        info("no ctest tests registered by this plugin; nothing to run")
+        return
+    info(f"running {count} registered ctest test(s)")
+    run(["ctest", "--output-on-failure"], cwd=build_dir)
 
 
 def find_lib(build_dir, name, target):
@@ -220,6 +253,7 @@ def main():
 
     plugin_build = work / "plugin-build"
     build_cmake(repo, plugin_build, cmake_configure_args(target, harness))
+    run_ctest(plugin_build)
     lib = find_lib(plugin_build, name, target)
 
     check_binary.check_linux(str(lib)) if is_linux else check_binary.check_windows(str(lib))
