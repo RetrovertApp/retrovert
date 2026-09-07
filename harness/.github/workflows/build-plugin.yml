@@ -21,6 +21,11 @@ on:
 
 jobs:
   linux:
+    # The roster's slowest full release-build runs ~6 minutes, so this is
+    # generous headroom whose only purpose is to stop a wedged job from
+    # sitting until GitHub's 360-minute default. A caller of this reusable
+    # workflow cannot set timeout-minutes itself, so it has to live here.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -112,6 +117,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   windows:
+    timeout-minutes: 30
     runs-on: windows-2022
     steps:
       - name: Check out plugin

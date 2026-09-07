@@ -30,6 +30,12 @@ import package_artifact
 
 PLAY_SECONDS = 10
 
+# No single rv_host invocation may hang the job. A wedged smoke used to sit
+# until GitHub's six-hour job ceiling (playback-uade burned 4h20m that way);
+# the load smoke is sub-second and the play smoke decodes PLAY_SECONDS of
+# audio, so this is pure headroom whose only job is to name the failure.
+SMOKE_TIMEOUT_SECONDS = 180
+
 
 def native_target():
     machine = platform.machine().lower()
@@ -156,17 +162,27 @@ def build_jail(jail, host_bin, generation, lib_rel, fixtures):
     return jail
 
 
+def run_smoke_step(cmd):
+    try:
+        run(cmd, timeout=SMOKE_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        fail(
+            f"smoke timed out after {SMOKE_TIMEOUT_SECONDS}s: "
+            + " ".join(str(c) for c in cmd)
+        )
+
+
 def run_smoke(host_bin, lib_rel, fixtures, generation, jail_root, sandbox):
     if sandbox == "jail":
         jail = build_jail(jail_root, host_bin, generation, lib_rel, fixtures)
         base = ["unshare", "--net", "--pid", "--fork", "chroot", str(jail)]
-        run(base + ["/rv_host", "load", f"/generation/{lib_rel}"])
+        run_smoke_step(base + ["/rv_host", "load", f"/generation/{lib_rel}"])
         for f in fixtures:
-            run(base + ["/rv_host", "play", f"/generation/{lib_rel}", f"/fixtures/{f.name}", str(PLAY_SECONDS)])
+            run_smoke_step(base + ["/rv_host", "play", f"/generation/{lib_rel}", f"/fixtures/{f.name}", str(PLAY_SECONDS)])
     else:
-        run([host_bin, "load", generation / lib_rel])
+        run_smoke_step([host_bin, "load", generation / lib_rel])
         for f in fixtures:
-            run([host_bin, "play", generation / lib_rel, f, str(PLAY_SECONDS)])
+            run_smoke_step([host_bin, "play", generation / lib_rel, f, str(PLAY_SECONDS)])
 
 
 def main():
