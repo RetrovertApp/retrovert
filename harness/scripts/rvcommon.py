@@ -34,19 +34,46 @@ LINUX_NEEDED_PREFIX_ALLOWLIST = ("ld-linux",)
 
 GLIBC_MAX_VERSION = (2, 28)
 
-# Core-OS System32 allowlist (case-insensitive). Compiler-runtime DLLs
-# (vcruntime*/msvcp*/ucrt*) are forbidden by omission: /MT is mandatory.
+# What a Windows plugin may import.
 #
-# winmm is the Windows multimedia API: waveOut*/waveIn* and the timeBeginPeriod
-# family. It has shipped in System32 since Windows 95, on every edition
-# including Server Core, so it belongs to the same core OS as kernel32 and
-# carries none of the redistributable risk this list exists to keep out.
+# The gate's job is that a plugin loads on a stock Windows with nothing
+# installed. Exactly one class of dependency breaks that: the compiler and
+# redistributable runtimes, which ship with a toolchain rather than with the
+# OS. Those are named and refused outright, so /MT is enforced by a rule you
+# can read rather than by absence from a list.
+#
+# Everything else is the Win32 API surface, present in System32 on every
+# edition since these DLLs were introduced. Enumerating only the few a plugin
+# happened to need so far made each new one -- winmm, then shell32 and user32 --
+# a harness version bump and a re-tag across every rostered repo, for
+# dependencies that carry no risk at all. The set below is the surface, not a
+# running tally of what has come up.
+WINDOWS_IMPORT_DENY_PREFIXES = (
+    "vcruntime",
+    "msvcp",
+    "msvcr",          # also covers msvcrt.dll, the OS CRT: mixing it with /MT
+    "ucrtbase",       # is the bug this check exists to catch
+    "api-ms-win-crt-",
+    "concrt",
+    "mfc",
+)
+
 WINDOWS_IMPORT_ALLOWLIST = {
-    "kernel32.dll",
-    "ntdll.dll",
-    "advapi32.dll",
-    "ws2_32.dll",
-    "winmm.dll",
+    # Kernel, base services, security
+    "kernel32.dll", "kernelbase.dll", "ntdll.dll", "advapi32.dll", "sechost.dll",
+    "rpcrt4.dll", "secur32.dll", "crypt32.dll", "bcrypt.dll", "ncrypt.dll",
+    "wintrust.dll", "userenv.dll", "psapi.dll", "version.dll", "powrprof.dll",
+    "cfgmgr32.dll", "setupapi.dll",
+    # Shell, COM, UI
+    "user32.dll", "gdi32.dll", "gdi32full.dll", "shell32.dll", "shlwapi.dll",
+    "ole32.dll", "oleaut32.dll", "combase.dll", "comdlg32.dll", "comctl32.dll",
+    "imm32.dll", "msimg32.dll", "uxtheme.dll", "dwmapi.dll", "winspool.drv",
+    # Audio, multimedia, timing
+    "winmm.dll", "mmdevapi.dll", "avrt.dll", "ksuser.dll", "dsound.dll",
+    # Graphics
+    "opengl32.dll", "glu32.dll",
+    # Networking
+    "ws2_32.dll", "iphlpapi.dll", "dnsapi.dll", "netapi32.dll",
 }
 
 REQUIRED_EXPORTS = {"rv_playback_plugin"}

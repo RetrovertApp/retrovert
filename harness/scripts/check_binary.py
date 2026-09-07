@@ -17,6 +17,7 @@ from rvcommon import (
     REQUIRED_EXPORTS,
     TARGETS,
     WINDOWS_IMPORT_ALLOWLIST,
+    WINDOWS_IMPORT_DENY_PREFIXES,
     fail,
     info,
     run_capture,
@@ -76,9 +77,15 @@ def check_windows(lib):
     for attr in ("DIRECTORY_ENTRY_IMPORT", "DIRECTORY_ENTRY_DELAY_IMPORT"):
         for entry in getattr(pe, attr, []):
             imports.add(entry.dll.decode("ascii").lower())
+    runtimes = sorted(d for d in imports if d.startswith(WINDOWS_IMPORT_DENY_PREFIXES))
+    if runtimes:
+        fail(
+            f"{lib}: links a compiler runtime instead of the static CRT: "
+            f"{runtimes} (/MT is mandatory)"
+        )
     bad = sorted(imports - WINDOWS_IMPORT_ALLOWLIST)
     if bad:
-        fail(f"{lib}: imports outside the System32 allowlist: {bad}")
+        fail(f"{lib}: imports outside the core-OS System32 set: {bad}")
 
     exports = set()
     for sym in getattr(getattr(pe, "DIRECTORY_ENTRY_EXPORT", None), "symbols", []):
