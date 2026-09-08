@@ -17,6 +17,7 @@ env:
 jobs:
   script-selftest:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/selftest.py
@@ -31,6 +32,8 @@ jobs:
           - runner: ubuntu-24.04-arm
             target: linux-arm64
     runs-on: ${{ matrix.runner }}
+    # Two full pipelines per job, so twice build-plugin.yml's 30-minute cap.
+    timeout-minutes: 60
     container:
       image: ghcr.io/retrovertapp/retrovert-build-harness/toolchain-linux@sha256:e986ffdcca86524248bd58cb955bb88a84c603a5cbb35125c3437feb1c0c1dd2
       options: --privileged
@@ -69,6 +72,7 @@ jobs:
 
   determinism-windows:
     runs-on: windows-2022
+    timeout-minutes: 60
     steps:
       - name: Check out harness
         uses: actions/checkout@v4
@@ -87,12 +91,27 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Must be the same toolchain build-plugin.yml ships with, or this job
+      # proves determinism for a compiler no artifact is built by. Retried for
+      # the same reason it is there: chocolatey is a single unmirrored source.
       - name: Install pinned toolchain
         shell: bash
         run: |
-          choco install -y --no-progress --allow-downgrade llvm --version=18.1.8
-          choco install -y --no-progress --allow-downgrade ninja --version=1.12.1
-          python -m pip install zstandard==0.23.0 pefile==2024.8.26
+          retry() {
+            local attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge 5 ]; then
+                echo "::error::giving up after $attempt attempts: $*"
+                return 1
+              fi
+              echo "attempt $attempt failed, retrying in $(( attempt * 15 ))s: $*"
+              sleep $(( attempt * 15 ))
+              attempt=$(( attempt + 1 ))
+            done
+          }
+          retry choco install -y --no-progress --allow-downgrade llvm --version=19.1.7
+          retry choco install -y --no-progress --allow-downgrade ninja --version=1.12.1
+          retry python -m pip install zstandard==0.23.0 pefile==2024.8.26
 
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
