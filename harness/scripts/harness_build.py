@@ -38,6 +38,13 @@ PLAY_SECONDS = 10
 # audio, so this is pure headroom whose only job is to name the failure.
 SMOKE_TIMEOUT_SECONDS = 180
 
+# A wedged unit test must name itself rather than run out the job clock. ctest's
+# own default per-test timeout is 1500s, longer than the 30-minute job cap, so a
+# single deadlocked test would surface as a GitHub cancellation with no harness
+# error at all. Bound each test, and the run as a whole, well inside that cap.
+CTEST_TEST_TIMEOUT_SECONDS = 120
+CTEST_TOTAL_TIMEOUT_SECONDS = 600
+
 
 def native_target():
     machine = platform.machine().lower()
@@ -73,12 +80,30 @@ def registered_test_count(build_dir):
     Asked with "ctest -N", which lists without running and is spelled the same
     way on every ctest we build against -- unlike --test-dir/--no-tests, which
     are newer than the cmake in some of our images.
+
+    An errored ctest is not the same as a plugin with no tests, and must not be
+    allowed to look like one -- that silent skip is the whole failure this gate
+    exists to end. Anything other than a clean listing we can parse is fatal.
     """
-    out = subprocess.run(
-        ["ctest", "-N"], cwd=build_dir, capture_output=True, text=True
-    ).stdout
-    m = re.search(r"^Total Tests:\s*(\d+)", out, re.M)
-    return int(m.group(1)) if m else 0
+    try:
+        proc = subprocess.run(
+            ["ctest", "-N"], cwd=build_dir, capture_output=True, text=True
+        )
+    except FileNotFoundError:
+        fail("ctest is not on PATH; the build image is not the one we pin")
+    if proc.returncode != 0:
+        fail(
+            f"ctest -N failed in {build_dir} (exit {proc.returncode}); "
+            "cannot tell an untested plugin from a broken test setup\n"
+            + (proc.stderr or proc.stdout).strip()
+        )
+    m = re.search(r"^Total Tests:\s*(\d+)", proc.stdout, re.M)
+    if m is None:
+        fail(
+            "ctest -N produced no 'Total Tests:' line; refusing to read that as "
+            "an untested plugin\n" + proc.stdout.strip()
+        )
+    return int(m.group(1))
 
 
 def run_ctest(build_dir):
@@ -86,16 +111,26 @@ def run_ctest(build_dir):
 
     Registering no tests is not a failure: most plugins are a thin shim over a
     third-party decoder and have nothing of their own to test. Registering
-    tests and never running them is the failure this guards against -- CI
-    compiled playback-uade's uadechannel_tests for months without once
-    executing it. Say which case we are in rather than passing silently.
+    tests and never running them is the failure this guards against -- CI has
+    been compiling playback-pretracker's pretracker_parse_tests, and four more
+    like it, without once executing them. Say which case we are in rather than
+    passing silently.
     """
     count = registered_test_count(build_dir)
     if count == 0:
         info("no ctest tests registered by this plugin; nothing to run")
         return
     info(f"running {count} registered ctest test(s)")
-    run(["ctest", "--output-on-failure"], cwd=build_dir)
+    try:
+        run(
+            ["ctest", "--output-on-failure", "--timeout", str(CTEST_TEST_TIMEOUT_SECONDS)],
+            cwd=build_dir,
+            timeout=CTEST_TOTAL_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        fail(f"ctest timed out after {CTEST_TOTAL_TIMEOUT_SECONDS}s in {build_dir}")
+    except subprocess.CalledProcessError as e:
+        fail(f"{count} registered ctest test(s) ran and ctest exited {e.returncode}")
 
 
 def find_lib(build_dir, name, target):
