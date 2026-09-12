@@ -1,0 +1,231 @@
+# Reusable workflow every rostered plugin repo calls to build its release
+# artifacts. The caller stays a three-line stub; toolchains, flags, checks,
+# packaging, and smokes all live here, versioned by the harness tag the
+# caller references.
+#
+# Caller must grant:
+#   permissions:
+#     contents: write        # upload to the rolling `builds` release
+#     id-token: write        # provenance attestation
+#     attestations: write
+#     packages: read         # pull the toolchain image from GHCR
+name: Build plugin artifacts
+
+on:
+  workflow_call:
+    inputs:
+      upload:
+        description: Upload artifacts to the rolling `builds` release
+        type: boolean
+        default: true
+
+jobs:
+  linux:
+    # The roster's slowest full release-build runs ~6 minutes, so this is
+    # generous headroom whose only purpose is to stop a wedged job from
+    # sitting until GitHub's 360-minute default. A caller of this reusable
+    # workflow cannot set timeout-minutes itself, so it has to live here.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    container:
+      # Pinned toolchain image; see docker/Dockerfile.linux. Updating this
+      # digest is a harness version bump.
+      image: ghcr.io/retrovertapp/retrovert-build-harness/toolchain-linux@sha256:e986ffdcca86524248bd58cb955bb88a84c603a5cbb35125c3437feb1c0c1dd2
+      options: --privileged
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      # github.job_workflow_sha is unreliable (observed empty), which would
+      # silently resolve the harness to its default branch instead of the
+      # tag the caller pinned. The run's referenced_workflows record is
+      # authoritative for both the sha and the tag.
+      - name: Resolve pinned harness revision
+        id: harness
+        shell: bash
+        run: |
+          Q='[.referenced_workflows[] | select(.path | contains("retrovert-build-harness/.github/workflows/build-plugin.yml"))][0]'
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.sha")
+          REF=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.ref")
+          case "$REF" in
+            refs/tags/v*) HV="h${REF#refs/tags/v}" ;;
+            *) HV="hdev-$(echo "$SHA" | cut -c1-8)" ;;
+          esac
+          echo "harness $REF ($SHA) -> $HV"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "hv=$HV" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Check out harness
+        uses: actions/checkout@v4
+        with:
+          repository: RetrovertApp/retrovert-build-harness
+          ref: ${{ steps.harness.outputs.sha }}
+          path: harness
+
+      - name: Build, check, package, smoke
+        run: |
+          python3.11 harness/scripts/harness_build.py \
+            --repo plugin \
+            --harness harness \
+            --target ${{ matrix.target }} \
+            --work /rvwork \
+            --out out \
+            --sandbox jail
+
+      - name: Name artifact for the builds cache
+        id: name
+        run: |
+          git config --global --add safe.directory "$PWD/plugin"
+          NAME=$(python3.11 -c "import tomllib;print(tomllib.load(open('plugin/harness.toml','rb'))['plugin']['name'])")
+          SHORTSHA=$(git -C plugin rev-parse --short HEAD)
+          HV="${{ steps.harness.outputs.hv }}"
+          ASSET="${NAME}-${{ matrix.target }}-${SHORTSHA}-${HV}.tar.zst"
+          cp "out/${NAME}-${{ matrix.target }}.tar.zst" "$ASSET"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance
+        if: inputs.upload && github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.name.outputs.asset }}
+
+      - name: Upload to builds cache release
+        if: inputs.upload && github.event_name != 'pull_request'
+        run: |
+          gh release view builds --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create builds --repo "$GITHUB_REPOSITORY" \
+              --title "builds cache" \
+              --notes "Rolling build cache consumed by the release gather. Not a release channel." \
+              --latest=false || true
+          gh release upload builds --repo "$GITHUB_REPOSITORY" --clobber \
+            "${{ steps.name.outputs.asset }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  windows:
+    timeout-minutes: 30
+    runs-on: windows-2022
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      # github.job_workflow_sha is unreliable (observed empty), which would
+      # silently resolve the harness to its default branch instead of the
+      # tag the caller pinned. The run's referenced_workflows record is
+      # authoritative for both the sha and the tag.
+      - name: Resolve pinned harness revision
+        id: harness
+        shell: bash
+        run: |
+          Q='[.referenced_workflows[] | select(.path | contains("retrovert-build-harness/.github/workflows/build-plugin.yml"))][0]'
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.sha")
+          REF=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.ref")
+          case "$REF" in
+            refs/tags/v*) HV="h${REF#refs/tags/v}" ;;
+            *) HV="hdev-$(echo "$SHA" | cut -c1-8)" ;;
+          esac
+          echo "harness $REF ($SHA) -> $HV"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "hv=$HV" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Check out harness
+        uses: actions/checkout@v4
+        with:
+          repository: RetrovertApp/retrovert-build-harness
+          ref: ${{ steps.harness.outputs.sha }}
+          path: harness
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The pins are deliberate: harness.cmake's reproducibility guarantees
+      # (/Brepro, file-prefix-map, static /MT) assume one specific compiler
+      # build, so inheriting the runner image's LLVM would let it drift.
+      # community.chocolatey.org is a single unmirrored source, though, and
+      # has served 503s mid-wave; retry rather than lose every Windows
+      # artifact on the roster to a transient outage.
+      - name: Install pinned toolchain
+        shell: bash
+        run: |
+          retry() {
+            local attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge 5 ]; then
+                echo "::error::giving up after $attempt attempts: $*"
+                return 1
+              fi
+              echo "attempt $attempt failed, retrying in $(( attempt * 15 ))s: $*"
+              sleep $(( attempt * 15 ))
+              attempt=$(( attempt + 1 ))
+            done
+          }
+          retry choco install -y --no-progress --allow-downgrade llvm --version=19.1.7
+          retry choco install -y --no-progress --allow-downgrade ninja --version=1.12.1
+          retry python -m pip install zstandard==0.23.0 pefile==2024.8.26
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build, check, package, smoke
+        shell: bash
+        run: |
+          export PATH="/c/Program Files/LLVM/bin:$PATH"
+          python harness/scripts/harness_build.py \
+            --repo plugin \
+            --harness harness \
+            --target windows-x86_64 \
+            --work "$RUNNER_TEMP/rvwork" \
+            --out out \
+            --sandbox none
+
+      - name: Name artifact for the builds cache
+        id: name
+        shell: bash
+        run: |
+          NAME=$(python -c "import tomllib;print(tomllib.load(open('plugin/harness.toml','rb'))['plugin']['name'])")
+          SHORTSHA=$(git -C plugin rev-parse --short HEAD)
+          HV="${{ steps.harness.outputs.hv }}"
+          ASSET="${NAME}-windows-x86_64-${SHORTSHA}-${HV}.tar.zst"
+          cp "out/${NAME}-windows-x86_64.tar.zst" "$ASSET"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance
+        if: inputs.upload && github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.name.outputs.asset }}
+
+      - name: Upload to builds cache release
+        if: inputs.upload && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          gh release view builds --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create builds --repo "$GITHUB_REPOSITORY" \
+              --title "builds cache" \
+              --notes "Rolling build cache consumed by the release gather. Not a release channel." \
+              --latest=false || true
+          gh release upload builds --repo "$GITHUB_REPOSITORY" --clobber \
+            "${{ steps.name.outputs.asset }}"
+        env:
+          GH_TOKEN: ${{ github.token }}

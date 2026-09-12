@@ -1,0 +1,156 @@
+"""Shared definitions for the Retrovert build harness scripts.
+
+The allowlists here are contract enforcement, versioned with the harness:
+widening either one is a harness version bump.
+"""
+
+import re
+import subprocess
+import sys
+
+TARGETS = {
+    "linux-x86_64": {"os": "linux", "lib_suffix": ".so"},
+    "linux-arm64": {"os": "linux", "lib_suffix": ".so"},
+    "windows-x86_64": {"os": "windows", "lib_suffix": ".dll"},
+}
+
+# Linux payloads may depend on the base runtime only; C++/compiler runtimes
+# are statically linked, so libstdc++/libgcc_s are deliberately absent.
+#
+# libmvec is glibc's vectorized math library, shipped and versioned with glibc
+# itself since 2.22 and so present at the 2.28 floor. GCC emits calls into it
+# when it auto-vectorizes a loop containing libm calls, which a plugin gets from
+# its own -ffast-math rather than from any choice of ours; it belongs to the same
+# base runtime as libc and libm.
+LINUX_NEEDED_ALLOWLIST = {
+    "libc.so.6",
+    "libm.so.6",
+    "libmvec.so.1",
+    "libpthread.so.0",
+    "libdl.so.2",
+    "librt.so.1",
+}
+LINUX_NEEDED_PREFIX_ALLOWLIST = ("ld-linux",)
+
+GLIBC_MAX_VERSION = (2, 28)
+
+# What a Windows plugin may import.
+#
+# The gate's job is that a plugin loads on a stock Windows with nothing
+# installed. Exactly one class of dependency breaks that: the compiler and
+# redistributable runtimes, which ship with a toolchain rather than with the
+# OS. Those are named and refused outright, so /MT is enforced by a rule you
+# can read rather than by absence from a list.
+#
+# Everything else is the Win32 API surface, present in System32 on every
+# edition since these DLLs were introduced. Enumerating only the few a plugin
+# happened to need so far made each new one -- winmm, then shell32 and user32 --
+# a harness version bump and a re-tag across every rostered repo, for
+# dependencies that carry no risk at all. The set below is the surface, not a
+# running tally of what has come up.
+WINDOWS_IMPORT_DENY_PREFIXES = (
+    "vcruntime",
+    "msvcp",
+    "msvcr",          # also covers msvcrt.dll, the OS CRT: mixing it with /MT
+    "ucrtbase",       # is the bug this check exists to catch
+    "api-ms-win-crt-",
+    "concrt",
+    "mfc",
+)
+
+WINDOWS_IMPORT_ALLOWLIST = {
+    # Kernel, base services, security
+    "kernel32.dll", "kernelbase.dll", "ntdll.dll", "advapi32.dll", "sechost.dll",
+    "rpcrt4.dll", "secur32.dll", "crypt32.dll", "bcrypt.dll", "ncrypt.dll",
+    "wintrust.dll", "userenv.dll", "psapi.dll", "version.dll", "powrprof.dll",
+    "cfgmgr32.dll", "setupapi.dll",
+    # Shell, COM, UI
+    "user32.dll", "gdi32.dll", "gdi32full.dll", "shell32.dll", "shlwapi.dll",
+    "ole32.dll", "oleaut32.dll", "combase.dll", "comdlg32.dll", "comctl32.dll",
+    "imm32.dll", "msimg32.dll", "uxtheme.dll", "dwmapi.dll", "winspool.drv",
+    # Audio, multimedia, timing
+    "winmm.dll", "mmdevapi.dll", "avrt.dll", "ksuser.dll", "dsound.dll",
+    # Graphics
+    "opengl32.dll", "glu32.dll",
+    # Networking
+    "ws2_32.dll", "iphlpapi.dll", "dnsapi.dll", "netapi32.dll",
+}
+
+REQUIRED_EXPORTS = {"rv_playback_plugin"}
+
+ZSTD_LEVEL = 19
+
+MANDATORY_ABI_HEADERS = {"playback.h", "rv_types.h"}
+
+
+def fail(msg):
+    print(f"HARNESS CHECK FAILED: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def info(msg):
+    print(f"harness: {msg}", file=sys.stderr)
+
+
+def run(cmd, **kwargs):
+    info("run: " + " ".join(str(c) for c in cmd))
+    return subprocess.run([str(c) for c in cmd], check=True, **kwargs)
+
+
+def run_capture(cmd):
+    return subprocess.run(
+        [str(c) for c in cmd], check=True, capture_output=True, text=True
+    ).stdout
+
+
+def load_harness_toml(repo):
+    import tomllib
+
+    path = repo / "harness.toml"
+    if not path.is_file():
+        fail(f"{path} is missing: every rostered plugin declares its contract there")
+    with open(path, "rb") as f:
+        cfg = tomllib.load(f)
+    name = cfg.get("plugin", {}).get("name")
+    if not name or not name.replace("_", "").isalnum():
+        fail("harness.toml: [plugin] name is missing or not a plain short name")
+    data_entries = cfg.get("data", {}).get("entries", [])
+    if not isinstance(data_entries, list) or not all(
+        isinstance(e, str) and e and "/" not in e and e != ".." for e in data_entries
+    ):
+        fail("harness.toml: [data] entries must be a list of plain top-level names")
+    version = cfg.get("plugin", {}).get("version")
+    fixtures = cfg.get("fixtures", [])
+    if not isinstance(fixtures, list) or not fixtures:
+        fail(
+            "harness.toml: at least one [[fixtures]] entry (file + sha256) is "
+            "required; a plugin without a playback fixture is a release blocker"
+        )
+    for f in fixtures:
+        file = f.get("file") if isinstance(f, dict) else None
+        if (
+            not isinstance(file, str)
+            or file.startswith(("/", "\\"))
+            or ".." in file.split("/")
+        ):
+            fail("harness.toml: [[fixtures]] file must be a relative repo path")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(f.get("sha256", ""))):
+            fail(f"harness.toml: [[fixtures]] {file} needs a lowercase sha256")
+        members = f.get("members", [])
+        if not isinstance(members, list) or not all(
+            isinstance(m, str)
+            and m
+            and not m.startswith(("/", "\\"))
+            and ".." not in m.split("/")
+            for m in members
+        ):
+            fail(
+                f"harness.toml: [[fixtures]] {file} members must be relative "
+                "paths inside the archive"
+            )
+    return {
+        "name": name,
+        "data_entries": data_entries,
+        "version": version,
+        "fixtures": fixtures,
+    }

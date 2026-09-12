@@ -1,0 +1,6 @@
+{
+  global:
+    rv_playback_plugin;
+  local:
+    *;
+};
