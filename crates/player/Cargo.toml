@@ -1,14 +1,21 @@
 [package]
 name = "retrovert-player"
 version.workspace = true
-edition.workspace = true
-license.workspace = true
-publish.workspace = true
+repository.workspace = true
+edition = "2021"
+license = "MIT"
+publish = false
 
 [dependencies]
 log = "0.4"
 retrovert-host.workspace = true
 thiserror = "2"
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+undocumented_unsafe_blocks = "deny"
