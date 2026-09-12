@@ -17,6 +17,12 @@ Plugins live in [`playback_plugins`](https://github.com/RetrovertApp/playback_pl
 which also hosts the release channels; the plugin ABI lives in
 [`retrovert_api`](https://github.com/RetrovertApp/retrovert_api).
 
+[`harness/`](harness) is the shared build harness those plugins build through:
+the reusable workflow a rostered plugin calls, the pinned toolchain image and
+ABI header set, and the per-artifact check suite. It is versioned on its own
+`harness/v<N>` tags, and its workflows sit at the repository root because
+reusable workflows have to.
+
 ## Channels
 
 | Channel | Host | Base URL | Anchor |

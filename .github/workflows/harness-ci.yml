@@ -7,7 +7,13 @@ name: Harness CI
 on:
   push:
     branches: [main]
-  pull_request: {}
+    paths:
+      - harness/**
+      - .github/workflows/harness-ci.yml
+  pull_request:
+    paths:
+      - harness/**
+      - .github/workflows/harness-ci.yml
   workflow_dispatch: {}
 
 env:
@@ -20,7 +26,36 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - run: python3 scripts/selftest.py
+      - run: python3 harness/scripts/selftest.py
+
+  abi-pin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the pinned retrovert_api revision
+        id: pin
+        run: |
+          REV=$(sed -n 's|^Canonical source: RetrovertApp/retrovert_api @ ||p' harness/abi/PINNED.md)
+          if [ -z "$REV" ]; then
+            echo "::error::harness/abi/PINNED.md names no canonical revision"
+            exit 1
+          fi
+          echo "rev=$REV" >> "$GITHUB_OUTPUT"
+
+      - name: Check out retrovert_api at that revision
+        uses: actions/checkout@v4
+        with:
+          repository: RetrovertApp/retrovert_api
+          ref: ${{ steps.pin.outputs.rev }}
+          path: api
+
+      - name: Diff the vendored headers against it
+        run: diff -r harness/abi/retrovert api/include/retrovert
+
+      - name: Check the digests describe the vendored copies
+        run: cd harness/abi && sha256sum -c HEADERS.sha256
 
   determinism-linux:
     strategy:
@@ -41,10 +76,10 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Check out harness
+      - name: Check out the monorepo
         uses: actions/checkout@v4
         with:
-          path: harness
+          path: monorepo
 
       - name: Check out playback-spu at the pinned test revision
         uses: actions/checkout@v4
@@ -55,11 +90,11 @@ jobs:
 
       - name: Build twice from different paths
         run: |
-          python3.11 harness/scripts/harness_build.py \
-            --repo plugin --harness harness --target ${{ matrix.target }} \
+          python3.11 monorepo/harness/scripts/harness_build.py \
+            --repo plugin --harness monorepo/harness --target ${{ matrix.target }} \
             --work /rvwork-first --out out-a --sandbox jail
-          python3.11 harness/scripts/harness_build.py \
-            --repo plugin --harness harness --target ${{ matrix.target }} \
+          python3.11 monorepo/harness/scripts/harness_build.py \
+            --repo plugin --harness monorepo/harness --target ${{ matrix.target }} \
             --work /rvwork-second-longer-path --out out-b --sandbox jail
 
       - name: Byte-compare
@@ -74,10 +109,10 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
-      - name: Check out harness
+      - name: Check out the monorepo
         uses: actions/checkout@v4
         with:
-          path: harness
+          path: monorepo
 
       - name: Check out playback-spu at the pinned test revision
         uses: actions/checkout@v4
@@ -122,11 +157,11 @@ jobs:
         shell: bash
         run: |
           export PATH="/c/Program Files/LLVM/bin:$PATH"
-          python harness/scripts/harness_build.py \
-            --repo plugin --harness harness --target windows-x86_64 \
+          python monorepo/harness/scripts/harness_build.py \
+            --repo plugin --harness monorepo/harness --target windows-x86_64 \
             --work "$RUNNER_TEMP/rvwork-first" --out out-a --sandbox none
-          python harness/scripts/harness_build.py \
-            --repo plugin --harness harness --target windows-x86_64 \
+          python monorepo/harness/scripts/harness_build.py \
+            --repo plugin --harness monorepo/harness --target windows-x86_64 \
             --work "$RUNNER_TEMP/rvwork-second-longer-path" --out out-b --sandbox none
 
       - name: Byte-compare

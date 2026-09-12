@@ -8,10 +8,12 @@ on:
   push:
     branches: [main]
     paths:
-      - docker/**
+      - harness/docker/**
       - .github/workflows/toolchain-image.yml
 
 env:
+  # Package of the harness's old repository: pushing to it from here needs that
+  # package to grant this repository write access.
   IMAGE: ghcr.io/retrovertapp/retrovert-build-harness/toolchain-linux
 
 permissions:
@@ -42,9 +44,9 @@ jobs:
         run: |
           docker build \
             --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
-            -f docker/Dockerfile.linux \
+            -f harness/docker/Dockerfile.linux \
             -t "$IMAGE:${{ github.sha }}-${{ matrix.arch }}" \
-            docker
+            harness/docker
           docker push "$IMAGE:${{ github.sha }}-${{ matrix.arch }}"
 
   manifest:

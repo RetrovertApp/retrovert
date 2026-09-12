@@ -1,4 +1,4 @@
-# retrovert-build-harness
+# Build harness
 
 The shared, versioned build harness for Retrovert playback plugins. Every
 rostered plugin repo builds its own release artifacts through the reusable
@@ -8,9 +8,14 @@ three-line caller workflow.
 
 Artifact identity is `(plugin, revision, target, harness version)`. Any
 change to flags, checks, allowlists, pinned headers, or the toolchain image
-is a harness version bump (a new `v<N>` tag), which correctly invalidates
-every cached build. An artifact built by harness vN can only exist if every
-vN check passed — the build-provenance attestation is the evidence.
+is a harness version bump (a new `harness/v<N>` tag), which correctly
+invalidates every cached build. An artifact built by harness vN can only
+exist if every vN check passed — the build-provenance attestation is the
+evidence.
+
+The `playback_plugins` roster keeps naming the version in the bare form it
+always has (`harness = "v10"`); the gather script and the release workflow
+derive the tag `harness/v<N>` and the artifact suffix `h<N>` from it.
 
 ## Targets
 
@@ -38,7 +43,7 @@ CRT, clang-cl).
    jail where only the extracted generation and the fixture are readable
    (the injected-RVIo compliance gate).
 
-Determinism is enforced by this repo's own CI: the full pipeline runs twice
+Determinism is enforced by the harness's own CI here: the full pipeline runs twice
 against a pinned `playback-spu` revision from different build paths and the
 artifacts must be byte-identical.
 
@@ -69,7 +74,7 @@ permissions:
   packages: read
 jobs:
   build:
-    uses: RetrovertApp/retrovert-build-harness/.github/workflows/build-plugin.yml@v5
+    uses: RetrovertApp/retrovert/.github/workflows/build-plugin.yml@harness/v10
 ```
 
 Artifacts land on the repo's rolling `builds` release as

@@ -36,8 +36,8 @@ jobs:
             target: linux-arm64
     runs-on: ${{ matrix.runner }}
     container:
-      # Pinned toolchain image; see docker/Dockerfile.linux. Updating this
-      # digest is a harness version bump.
+      # Pinned toolchain image; see harness/docker/Dockerfile.linux. Updating
+      # this digest is a harness version bump.
       image: ghcr.io/retrovertapp/retrovert-build-harness/toolchain-linux@sha256:e986ffdcca86524248bd58cb955bb88a84c603a5cbb35125c3437feb1c0c1dd2
       options: --privileged
       credentials:
@@ -57,11 +57,11 @@ jobs:
         id: harness
         shell: bash
         run: |
-          Q='[.referenced_workflows[] | select(.path | contains("retrovert-build-harness/.github/workflows/build-plugin.yml"))][0]'
+          Q='[.referenced_workflows[] | select(.path | contains("RetrovertApp/retrovert/.github/workflows/build-plugin.yml"))][0]'
           SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.sha")
           REF=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.ref")
           case "$REF" in
-            refs/tags/v*) HV="h${REF#refs/tags/v}" ;;
+            refs/tags/harness/v*) HV="h${REF#refs/tags/harness/v}" ;;
             *) HV="hdev-$(echo "$SHA" | cut -c1-8)" ;;
           esac
           echo "harness $REF ($SHA) -> $HV"
@@ -70,18 +70,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Check out harness
+      - name: Check out the harness
         uses: actions/checkout@v4
         with:
-          repository: RetrovertApp/retrovert-build-harness
+          repository: RetrovertApp/retrovert
           ref: ${{ steps.harness.outputs.sha }}
-          path: harness
+          path: monorepo
 
       - name: Build, check, package, smoke
         run: |
-          python3.11 harness/scripts/harness_build.py \
+          python3.11 monorepo/harness/scripts/harness_build.py \
             --repo plugin \
-            --harness harness \
+            --harness monorepo/harness \
             --target ${{ matrix.target }} \
             --work /rvwork \
             --out out \
@@ -133,11 +133,11 @@ jobs:
         id: harness
         shell: bash
         run: |
-          Q='[.referenced_workflows[] | select(.path | contains("retrovert-build-harness/.github/workflows/build-plugin.yml"))][0]'
+          Q='[.referenced_workflows[] | select(.path | contains("RetrovertApp/retrovert/.github/workflows/build-plugin.yml"))][0]'
           SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.sha")
           REF=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq "$Q.ref")
           case "$REF" in
-            refs/tags/v*) HV="h${REF#refs/tags/v}" ;;
+            refs/tags/harness/v*) HV="h${REF#refs/tags/harness/v}" ;;
             *) HV="hdev-$(echo "$SHA" | cut -c1-8)" ;;
           esac
           echo "harness $REF ($SHA) -> $HV"
@@ -146,12 +146,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Check out harness
+      - name: Check out the harness
         uses: actions/checkout@v4
         with:
-          repository: RetrovertApp/retrovert-build-harness
+          repository: RetrovertApp/retrovert
           ref: ${{ steps.harness.outputs.sha }}
-          path: harness
+          path: monorepo
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -192,9 +192,9 @@ jobs:
         shell: bash
         run: |
           export PATH="/c/Program Files/LLVM/bin:$PATH"
-          python harness/scripts/harness_build.py \
+          python monorepo/harness/scripts/harness_build.py \
             --repo plugin \
-            --harness harness \
+            --harness monorepo/harness \
             --target windows-x86_64 \
             --work "$RUNNER_TEMP/rvwork" \
             --out out \
