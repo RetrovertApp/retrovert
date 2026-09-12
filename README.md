@@ -44,3 +44,9 @@ repository root, run:
 ```sh
 ./scripts/check.sh
 ```
+
+## Licensing
+
+Original code is MIT licensed; `retrovert-tuf`, `retrovert-updater` and
+`retrovert-publish` are `MIT OR Apache-2.0`. Third-party asset notices travel
+with the crate that ships them.
