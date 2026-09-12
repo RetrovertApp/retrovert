@@ -1,12 +1,20 @@
 [package]
 name = "playlist-engine"
-version = "0.1.0"
+version.workspace = true
+repository.workspace = true
 edition = "2021"
+license = "MIT"
 publish = false
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde.workspace = true
+serde_json.workspace = true
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+undocumented_unsafe_blocks = "deny"

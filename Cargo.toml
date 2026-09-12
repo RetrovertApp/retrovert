@@ -4,6 +4,7 @@ members = [
     "crates/catalog",
     "crates/desktop",
     "crates/player",
+    "crates/playlist",
     "crates/publish",
     "crates/tuf",
     "crates/updater",

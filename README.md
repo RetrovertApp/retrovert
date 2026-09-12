@@ -7,6 +7,7 @@ current and the publisher that signs it.
 | Crate | What it is |
 | --- | --- |
 | [`retrovert-player`](crates/player) | the headless playback engine |
+| [`playlist-engine`](crates/playlist) | host-agnostic playlist storage, persistence and playback ordering |
 | [`retrovert-plugin-catalog`](crates/catalog) | keeps the engine's decoder set current against an update channel |
 | [`retrovert-player-desktop`](crates/desktop) | the desktop player binary, `retrovert`, following the `dev` channel |
 | [`retrovert-tuf`](crates/tuf) | TUF metadata model and signing primitives, shared by publisher and client |
