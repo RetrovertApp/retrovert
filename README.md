@@ -11,10 +11,21 @@ current and the publisher that signs it.
 | [`retrovert-player-desktop`](crates/desktop) | the desktop player binary, `retrovert`, following the `dev` channel |
 | [`retrovert-tuf`](crates/tuf) | TUF metadata model and signing primitives, shared by publisher and client |
 | [`retrovert-updater`](crates/updater) | resolves a signed channel into a verified installed generation |
+| [`retrovert-publish`](crates/publish) | the publisher CLI that signs a channel, with each channel's trust anchor under [`channels/`](channels) |
 
 Plugins live in [`playback_plugins`](https://github.com/RetrovertApp/playback_plugins),
 which also hosts the release channels; the plugin ABI lives in
 [`retrovert_api`](https://github.com/RetrovertApp/retrovert_api).
+
+## Channels
+
+| Channel | Host | Base URL | Anchor |
+| --- | --- | --- | --- |
+| `dev` | `RetrovertApp/playback_plugins` | `https://github.com/RetrovertApp/playback_plugins/releases/download/dev/channel-metadata/` | [`channels/dev/root.json`](channels/dev/root.json) |
+
+Operating a channel — the `retrovert-publish` commands, the key layout, the
+expiry schedule and the secrets the signing workflows need — is documented in
+[`crates/publish/README.md`](crates/publish/README.md).
 
 `retrovert-player` owns headless decode coordination. Renderers are not part of
 this workspace yet: the player UI draws with flowi and lives with the host that

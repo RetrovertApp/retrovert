@@ -4,6 +4,7 @@ members = [
     "crates/catalog",
     "crates/desktop",
     "crates/player",
+    "crates/publish",
     "crates/tuf",
     "crates/updater",
 ]
@@ -18,6 +19,7 @@ retrovert-player = { path = "crates/player" }
 retrovert-tuf = { path = "crates/tuf", version = "0.1.0" }
 retrovert-updater = { path = "crates/updater" }
 
+clap = { version = "4.6", features = ["derive"] }
 ed25519-dalek = { version = "3.0", features = ["pem", "pkcs8", "zeroize"] }
 getrandom = "0.3"
 hex = "0.4"
