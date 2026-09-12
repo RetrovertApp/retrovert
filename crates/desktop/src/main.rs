@@ -7,7 +7,7 @@
 //! stdin and renders status; samples reach the device through cpal.
 //!
 //! ```text
-//! retrovert-player-desktop [--root DIR] [--interval SECS] [--no-auto-apply] [FILES..]
+//! retrovert [--root DIR] [--interval SECS] [--no-auto-apply] [FILES..]
 //!
 //! > play <path|index>   mount media (bare index picks from FILES)
 //! > stop                drop the session
@@ -136,11 +136,9 @@ fn parse_args() -> Result<Options, String> {
             }
             "--no-auto-apply" => options.auto_apply = false,
             "--help" | "-h" => {
-                return Err(
-                    "usage: retrovert-player-desktop [--root DIR] [--interval SECS] \
+                return Err("usage: retrovert [--root DIR] [--interval SECS] \
                      [--no-auto-apply] [FILES..]"
-                        .to_string(),
-                );
+                    .to_string());
             }
             _ => options.files.push(PathBuf::from(argument)),
         }
