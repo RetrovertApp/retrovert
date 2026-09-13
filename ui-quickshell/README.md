@@ -112,8 +112,11 @@ starves the device. Rows are published every hundred files or 400 ms.
 ## What crosses the C ABI
 
 Per-frame data is fixed-size: `RvState` (status, position, duration, subsong, tracker
-position, loop, volume, library progress, and a revision counter per document), the scope
-points and the VU levels, each copied into a caller-owned buffer under the front lock.
+position and window, loop, volume, library progress, and a revision counter per document
+and for the pattern cells), the scope points, the VU levels and the pattern cells of a row
+range, each copied into a caller-owned buffer under the front lock. The cells are copied
+from the worker to the front only when the window moves to another pattern; the row cursor
+is in the state.
 Everything that changes at song rate and can be large, the library rows, the playing song's
 metadata and the queue, is a JSON document read with `rv_ui_document` when its revision
 moves. The shim parses each into a `QVariantMap`; QML filters, sorts and groups the rows
@@ -131,6 +134,19 @@ design's two web fonts are replaced by the desktop's one monospace family from O
 `Style`, so the shell looks like the rest of the user's desktop. Because `ui/qmldir` exists,
 every component has to be listed in it; a file that is not is "not a type".
 
+`ui/Pattern.qml` is 2b, the pattern view, with one departure from its mockup: each channel's
+scope sits above its own column of the grid rather than in a strip along the foot, so a
+channel's notes and its waveform read as one thing. The header lays its cells out from the same
+channel width the grid divides itself into, so they stay aligned at any width. The mockup's
+order rail is left out because the plugin API publishes no order list. The grid itself is a
+native item (`shim/pattern.cpp`): the bridge publishes the decoder's row window as classed
+cells, the item asks for the rows it can show around the playing row and rebuilds its glyphs
+only when that row or the pattern changes, never per frame. A channel shows the leading
+columns that fit its width, so a 4-channel MOD shows every column and a 16-channel IT shows
+note and instrument. The scopes lead the audio by up to the ring's 0.2 s. Launched with a song
+the shell opens on this view; Escape returns to the library, Return comes back, and the
+transport's channel meter swaps them too.
+
 ## State
 
 `retrovert-gui --library DIR song.hvl` opens the library screen on real data throughout: the
@@ -140,6 +156,7 @@ the queue, and the transport has play/pause, previous/next, seek on the progress
 loop, the channel meter, the tracker position and the volume. Two departures from the mockup:
 the table's `CH` column is `SUB` (subsong count), because a channel count needs the song
 mounted, and the output line reads the rate and layout since the engine has no filter control.
-Not yet: the plugin catalog behind the shell, the 2b pattern view with the scopes on screen,
-keyboard navigation, a second invocation reaching the running window over Quickshell IPC,
-and the package.
+The pattern view runs on the same data: grid, per-channel scopes, samples and message, the
+tracker position in the bar. Not yet: the plugin catalog behind the shell, an order list
+(needs a plugin API addition), keyboard navigation beyond the two screen keys, a second
+invocation reaching the running window over Quickshell IPC, and the package.

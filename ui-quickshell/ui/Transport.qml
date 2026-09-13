@@ -8,6 +8,8 @@ import "."
 Rectangle {
     id: root
     required property Session session
+    // The channel meter was clicked: the shell swaps between the library and the pattern view.
+    signal meterClicked()
 
     readonly property var track: session.track
     readonly property bool hasTrack: track.title !== undefined
@@ -71,6 +73,7 @@ Rectangle {
                 gap: 2
                 color: Theme.color.accent
             }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.meterClicked() }
         }
         ColumnLayout {
             Layout.fillWidth: true

@@ -8,8 +8,9 @@ import QtQuick
 import Retrovert
 import "."
 
-// One window, one Rust session with the engine inside it, and the library screen over it,
-// coloured by the Omarchy theme. RETROVERT_SONG names the file to play, RETROVERT_PLUGINS
+// One window, one Rust session with the engine inside it, and one of two screens over it,
+// the library or the pattern view, coloured by the Omarchy theme. Escape returns to the
+// library, Return opens the pattern view, and the transport's channel meter swaps them. RETROVERT_SONG names the file to play, RETROVERT_PLUGINS
 // the directory of decoders and RETROVERT_LIBRARY the directory the library lists; the
 // launcher sets all three.
 ShellRoot {
@@ -57,9 +58,29 @@ ShellRoot {
             }
         }
 
-        Library {
+        // Which screen is up. Both stay built so a swap costs nothing and keeps their state.
+        // Launched with a song, the shell opens on the pattern view of it; without, the library.
+        property bool patternView: (Quickshell.env("RETROVERT_SONG") || "") !== ""
+
+        // The shortcuts live in an Item: a Shortcut is active only while its parent item's
+        // window is, and the window itself is not an item.
+        Item {
             anchors.fill: parent
-            session: player
+            Shortcut { sequence: "Escape"; onActivated: window.patternView = false }
+            Shortcut { sequences: ["Return", "Enter"]; onActivated: window.patternView = true }
+            Library {
+                anchors.fill: parent
+                visible: !window.patternView
+                session: player
+                onMeterClicked: window.patternView = true
+            }
+            Pattern {
+                anchors.fill: parent
+                visible: window.patternView
+                session: player
+                onLibraryRequested: window.patternView = false
+                onMeterClicked: window.patternView = false
+            }
         }
     }
 }

@@ -8,3 +8,4 @@ LibraryTable 1.0 LibraryTable.qml
 ModulePanel 1.0 ModulePanel.qml
 Transport 1.0 Transport.qml
 Library 1.0 Library.qml
+Pattern 1.0 Pattern.qml

@@ -18,8 +18,10 @@ mod engine;
 use std::ffi::{c_char, c_void, CStr};
 use std::sync::Once;
 
-use engine::{copy_points, lock, Command, Document, Engine, LoopMode, Status, TRACE_CAPACITY};
-use retrovert_present::{ScopePoint, ScopeTrace};
+use engine::{
+    copy_cells, copy_points, lock, Command, Document, Engine, LoopMode, Status, TRACE_CAPACITY,
+};
+use retrovert_present::{GridCell, ScopePoint, ScopeTrace};
 
 /// One UI session: the engine plus the demo traces used while nothing is mounted.
 pub struct Session {
@@ -53,6 +55,16 @@ pub struct State {
     pub pattern: u32,
     /// Row within the pattern.
     pub row: u32,
+    /// Pattern channels across the grid, 0 without a pattern.
+    pub pattern_channels: u32,
+    /// Columns per pattern channel.
+    pub pattern_columns: u32,
+    /// First row of the published pattern window, and one past its last.
+    pub window_lo: u32,
+    /// See `window_lo`.
+    pub window_hi: u32,
+    /// Bumped whenever the pattern cells are replaced.
+    pub cells_rev: u64,
     /// Output sample rate in Hz.
     pub sample_rate: u32,
     /// One of [`LoopMode`], as its discriminant.
@@ -397,6 +409,11 @@ pub unsafe extern "C" fn rv_ui_poll(session: *const c_void, out: *mut State) {
         order: front.position.order,
         pattern: front.position.pattern,
         row: front.position.row,
+        pattern_channels: u32::try_from(front.grid.channels()).unwrap_or(u32::MAX),
+        pattern_columns: u32::try_from(front.grid.columns().len()).unwrap_or(u32::MAX),
+        window_lo: front.grid.window_lo(),
+        window_hi: front.grid.window_hi(),
+        cells_rev: front.cells_rev,
         sample_rate: engine::SAMPLE_RATE,
         loop_mode: front.loop_mode as u32,
         volume: front.volume,
@@ -453,6 +470,34 @@ pub unsafe extern "C" fn rv_ui_demo_tick(session: *mut c_void, seconds: f64) {
     if session.idle() {
         session.demo_tick(seconds);
     }
+}
+
+/// Copies pattern rows `row_lo..row_hi` into `out` as whole rows of
+/// `pattern_channels * pattern_columns` cells each, row-major, blank for rows outside the
+/// published window, and returns how many cells were written: at most `capacity` rounded
+/// down to whole rows, so the caller always gets complete rows.
+///
+/// # Safety
+/// `session` must be a live pointer from [`rv_ui_new`]; `out` must point to at least
+/// `capacity` writable [`GridCell`]s, or be null with `capacity` 0.
+#[no_mangle]
+pub unsafe extern "C" fn rv_ui_pattern_cells(
+    session: *const c_void,
+    row_lo: u32,
+    row_hi: u32,
+    out: *mut GridCell,
+    capacity: u32,
+) -> u32 {
+    // SAFETY: the caller promises a live session.
+    let session = unsafe { &*session.cast::<Session>() };
+    let capacity = usize::try_from(capacity).unwrap_or(0);
+    if out.is_null() || capacity == 0 {
+        return 0;
+    }
+    // SAFETY: the caller promises `capacity` writable cells at `out`.
+    let dst = unsafe { std::slice::from_raw_parts_mut(out, capacity) };
+    let front = lock(&session.engine.front);
+    u32::try_from(copy_cells(&front, row_lo, row_hi, dst)).unwrap_or(u32::MAX)
 }
 
 /// Copies channel `channel`'s polyline into `out`, at most `capacity` points, and returns
@@ -515,6 +560,11 @@ mod tests {
             order: 0,
             pattern: 0,
             row: 0,
+            pattern_channels: 0,
+            pattern_columns: 0,
+            window_lo: 0,
+            window_hi: 0,
+            cells_rev: 0,
             sample_rate: 0,
             loop_mode: 0,
             volume: 0.0,
@@ -540,6 +590,8 @@ mod tests {
         // SAFETY: s is live, buf has 8 bytes, levels has 4 floats, and s is freed once.
         unsafe {
             assert_eq!(rv_ui_scope_points(s, 7, out.as_mut_ptr(), 8), 0);
+            let mut cells = [GridCell::default(); 4];
+            assert_eq!(rv_ui_pattern_cells(s, 0, 2, cells.as_mut_ptr(), 4), 0);
             assert_eq!(rv_ui_error(s, buf.as_mut_ptr(), 8), 0);
             assert_eq!(rv_ui_vu(s, levels.as_mut_ptr(), 4), 0);
             rv_ui_free(s);
@@ -565,6 +617,11 @@ mod tests {
             order: 0,
             pattern: 0,
             row: 0,
+            pattern_channels: 0,
+            pattern_columns: 0,
+            window_lo: 0,
+            window_hi: 0,
+            cells_rev: 0,
             sample_rate: 0,
             loop_mode: 0,
             volume: 0.0,

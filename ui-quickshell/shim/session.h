@@ -43,6 +43,8 @@ class Session : public QObject, public QQmlParserStatus {
     Q_PROPERTY(int order READ order NOTIFY positionChanged)
     Q_PROPERTY(int pattern READ pattern NOTIFY positionChanged)
     Q_PROPERTY(int row READ row NOTIFY positionChanged)
+    Q_PROPERTY(int patternChannels READ patternChannels NOTIFY stateChanged)
+    Q_PROPERTY(int patternColumns READ patternColumns NOTIFY stateChanged)
     Q_PROPERTY(QVariantMap library READ library NOTIFY libraryChanged)
     Q_PROPERTY(QVariantMap track READ track NOTIFY trackChanged)
     Q_PROPERTY(QVariantMap queue READ queue NOTIFY queueChanged)
@@ -75,6 +77,8 @@ public:
     int order() const { return static_cast<int>(m_state.order); }
     int pattern() const { return static_cast<int>(m_state.pattern); }
     int row() const { return static_cast<int>(m_state.row); }
+    int patternChannels() const { return static_cast<int>(m_state.pattern_channels); }
+    int patternColumns() const { return static_cast<int>(m_state.pattern_columns); }
     QVariantMap library() const { return m_library; }
     QVariantMap track() const { return m_track; }
     QVariantMap queue() const { return m_queue; }
@@ -100,6 +104,12 @@ public:
     uint32_t scopePoints(uint32_t channel, RvScopePoint* out, uint32_t capacity) const;
     // Fills `out` with up to `capacity` VU levels; returns the count.
     uint32_t vuLevels(float* out, uint32_t capacity) const;
+    // Fills `out` with whole rows `lo..hi` of the pattern window, blank outside it; returns
+    // the cell count. The window's shape is in `state()`.
+    uint32_t patternCells(uint32_t lo, uint32_t hi, RvGridCell* out, uint32_t capacity) const;
+    // The last polled state. Written on the GUI thread in `poll`; a render-thread reader
+    // sees it during the synchronisation phase, when the GUI thread is blocked.
+    const RvState& state() const { return m_state; }
 
 signals:
     void pluginDirChanged();
@@ -109,6 +119,8 @@ signals:
     void libraryChanged();
     void trackChanged();
     void queueChanged();
+    // Raised when the pattern window's cells were replaced: a new pattern, or none.
+    void patternChanged();
     // Raised once per new frame so every surface schedules one repaint.
     void frame();
 

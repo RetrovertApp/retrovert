@@ -153,7 +153,9 @@ void Session::poll() {
         || next.duration_ms != prev.duration_ms || next.subsong != prev.subsong
         || next.subsong_count != prev.subsong_count || next.loop_mode != prev.loop_mode
         || next.volume != prev.volume || next.library_scanned != prev.library_scanned
-        || next.library_total != prev.library_total;
+        || next.library_total != prev.library_total
+        || next.pattern_channels != prev.pattern_channels
+        || next.pattern_columns != prev.pattern_columns;
     const bool positionChangedNow = next.position_ms / kPositionStepMs != prev.position_ms / kPositionStepMs
         || next.has_position != prev.has_position || next.order != prev.order
         || next.pattern != prev.pattern || next.row != prev.row;
@@ -181,6 +183,7 @@ void Session::poll() {
         m_queue = readDocument(RvDocument_Queue);
         emit queueChanged();
     }
+    if (next.cells_rev != prev.cells_rev) emit patternChanged();
     if (newFrame) emit frame();
 }
 
@@ -190,4 +193,8 @@ uint32_t Session::scopePoints(uint32_t channel, RvScopePoint* out, uint32_t capa
 
 uint32_t Session::vuLevels(float* out, uint32_t capacity) const {
     return m_session ? rv_ui_vu(m_session, out, capacity) : 0;
+}
+
+uint32_t Session::patternCells(uint32_t lo, uint32_t hi, RvGridCell* out, uint32_t capacity) const {
+    return m_session ? rv_ui_pattern_cells(m_session, lo, hi, out, capacity) : 0;
 }

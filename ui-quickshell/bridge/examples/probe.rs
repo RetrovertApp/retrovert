@@ -31,17 +31,23 @@ fn main() {
             let layout = backend.visualization_layout().cloned();
             println!(
                 "layout: {:?}",
-                layout.as_ref().map(|l| (l.caps, l.scope_channels.len()))
+                layout.as_ref().map(|l| (
+                    l.caps,
+                    l.scope_channels.len(),
+                    l.pattern_channels.len(),
+                    l.columns.iter().map(|c| c.char_width).collect::<Vec<_>>()
+                ))
             );
             let mut snap = layout.unwrap().new_snapshot().unwrap();
             for _ in 0..10 {
                 let n = backend.render(1024).unwrap().len();
                 backend.capture(&mut snap).unwrap();
                 println!(
-                    "rendered {n} samples; scope counts {:?}; vu {:?}; position {:?}",
+                    "rendered {n} samples; scope counts {:?}; vu {:?}; position {:?}; {} cells",
                     snap.scope_counts(),
                     snap.vu(),
-                    snap.position
+                    snap.position,
+                    snap.cells().len()
                 );
             }
         }

@@ -15,6 +15,8 @@ Rectangle {
     property string collectionFilter: ""
     property string search: ""
     property string sortKey: "added"
+    // Passed up from the transport's channel meter.
+    signal meterClicked()
 
     color: Theme.color.background
 
@@ -26,6 +28,7 @@ Rectangle {
         height: 84
         z: 1
         session: root.session
+        onMeterClicked: root.meterClicked()
     }
     LibraryRail {
         id: rail

@@ -27,12 +27,15 @@ use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use playlist_engine::{Engine as Playlist, ItemSpec, Mode};
+use retrovert_host::ffi::playback::{RVColumnKind, RVScrollMode};
 use retrovert_host::service::{MetadataValue, TrackMetadata};
 use retrovert_host::session::StreamFormat;
-use retrovert_host::visualization::{VisualizationConfig, VizSnapshot, MAX_SCOPE_CHANNELS};
+use retrovert_host::visualization::{
+    VisualizationConfig, VizLayout, VizSnapshot, MAX_SCOPE_CHANNELS,
+};
 use retrovert_library::Entry;
 use retrovert_player::{PlaybackBackend, PlaybackStatus, PlayerBackend};
-use retrovert_present::{ScopePoint, ScopeTrace, VuMeter};
+use retrovert_present::{GridCell, GridColumn, PatternGrid, ScopePoint, ScopeTrace, VuMeter};
 use serde::Serialize;
 
 /// The rate the device is opened at and the decoders render to.
@@ -59,6 +62,8 @@ const SCAN_PUBLISH_INTERVAL: Duration = Duration::from_millis(400);
 const RESTART_AFTER_MS: i64 = 3_000;
 /// Points reserved per channel, comfortably above one pixel per point at any sane width.
 pub const TRACE_CAPACITY: usize = 1024;
+/// Pattern rows a decoder may publish per window: a whole pattern, and IT allows 200.
+const PATTERN_ROW_BUDGET: u32 = 256;
 
 /// What the UI is told about playback, as the C ABI spells it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,6 +150,10 @@ pub struct Front {
     pub vu: [f32; MAX_SCOPE_CHANNELS as usize],
     /// How many of `vu` are populated.
     pub vu_len: usize,
+    /// The pattern window the decoder published last; empty without a pattern.
+    pub grid: PatternGrid,
+    /// Bumped whenever `grid`'s cells are replaced, so a reader can keep its glyphs otherwise.
+    pub cells_rev: u64,
     /// Bumped once per capture, so a reader can tell a new frame from a repeat.
     pub frame: u64,
     /// Playback state.
@@ -185,6 +194,8 @@ impl Front {
             traces: Vec::new(),
             vu: [0.0; MAX_SCOPE_CHANNELS as usize],
             vu_len: 0,
+            grid: PatternGrid::empty(),
+            cells_rev: 0,
             frame: 0,
             status: Status::Idle,
             position_ms: 0,
@@ -452,6 +463,28 @@ struct TrackDoc<'a> {
     path: &'a Path,
     size: u64,
     row: Option<u32>,
+    /// The text the composer left in the file, or empty.
+    message: &'a str,
+    /// The pattern grid's shape; absent for a decoder without a visualization layout.
+    layout: Option<LayoutDoc>,
+}
+
+/// What the pattern grid and scopes look like, fixed for the mounted song.
+#[derive(Serialize)]
+struct LayoutDoc {
+    /// `synchronized` or `per_channel`.
+    scroll_mode: &'static str,
+    columns: Vec<ColumnDoc>,
+    pattern_channels: Vec<String>,
+    scope_channels: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct ColumnDoc {
+    label: String,
+    width: u8,
+    /// `note`, `instrument`, `volume`, `effect`, `param` or `custom`.
+    kind: &'static str,
 }
 
 #[derive(Serialize)]
@@ -491,6 +524,7 @@ struct Worker {
     library: Library,
     traces: Vec<ScopeTrace>,
     vu: VuMeter,
+    grid: PatternGrid,
     pacer: Pacer,
     next_capture: Instant,
     frame: u64,
@@ -507,7 +541,10 @@ impl Worker {
     ) -> Self {
         let backend = PlayerBackend::new(
             plugins,
-            VisualizationConfig::default(),
+            VisualizationConfig {
+                pattern_row_budget: PATTERN_ROW_BUDGET,
+                ..VisualizationConfig::default()
+            },
             StreamFormat {
                 sample_rate: SAMPLE_RATE,
                 channels: u32::from(CHANNELS),
@@ -545,6 +582,7 @@ impl Worker {
             },
             traces: Vec::new(),
             vu: VuMeter::new(MAX_SCOPE_CHANNELS as usize, VU_FALL_PER_FRAME),
+            grid: PatternGrid::empty(),
             pacer: Pacer::new(),
             next_capture: Instant::now(),
             frame: 0,
@@ -854,6 +892,7 @@ impl Worker {
                     .map(|_| ScopeTrace::new(TRACE_CAPACITY))
                     .collect();
                 self.vu.clear();
+                self.grid = layout.as_ref().map_or_else(PatternGrid::empty, grid_for);
                 let duration_ms = metadata
                     .subsongs
                     .get(subsong as usize)
@@ -865,6 +904,8 @@ impl Worker {
                         .map(|_| ScopeTrace::new(TRACE_CAPACITY))
                         .collect();
                     f.vu_len = 0;
+                    f.grid = layout.as_ref().map_or_else(PatternGrid::empty, grid_for);
+                    f.cells_rev = f.cells_rev.wrapping_add(1);
                     f.status = Status::Playing;
                     f.plugin = self.backend.plugin_name().to_string();
                     f.error.clear();
@@ -910,10 +951,13 @@ impl Worker {
         self.playing = None;
         self.traces.clear();
         self.vu.clear();
+        self.grid = PatternGrid::empty();
         clear(&self.ring);
         let mut f = lock(&self.front);
         f.traces.clear();
         f.vu_len = 0;
+        f.grid = PatternGrid::empty();
+        f.cells_rev = f.cells_rev.wrapping_add(1);
         f.position = TrackerPosition::default();
     }
 
@@ -947,6 +991,7 @@ impl Worker {
             trace.fill_from(&playing.snapshot, channel);
         }
         self.vu.tick_from(&playing.snapshot);
+        let cells_changed = self.grid.fill_from(&playing.snapshot);
         self.frame = self.frame.wrapping_add(1);
         let position = self.backend.position_ms().unwrap_or(0);
         let tracker = playing
@@ -966,6 +1011,10 @@ impl Worker {
         let levels = self.vu.levels();
         f.vu[..levels.len()].copy_from_slice(levels);
         f.vu_len = levels.len();
+        if cells_changed {
+            f.grid.copy_from(&self.grid);
+            f.cells_rev = f.cells_rev.wrapping_add(1);
+        }
         f.frame = self.frame;
         f.position_ms = position;
         f.position = tracker;
@@ -1101,6 +1150,8 @@ impl Worker {
                     path: &playing.track.path,
                     size: playing.entry.size,
                     row,
+                    message: text_tag(&playing.metadata, "message").unwrap_or(""),
+                    layout: self.backend.visualization_layout().map(layout_doc),
                 })
                 .unwrap_or_default()
             }
@@ -1149,6 +1200,70 @@ impl Worker {
         let mut f = lock(&self.front);
         f.queue_rev = f.queue_rev.wrapping_add(1);
     }
+}
+
+/// The grid a layout calls for, sized for the row budget. Setup cadence.
+fn grid_for(layout: &Arc<VizLayout>) -> PatternGrid {
+    let columns: Vec<GridColumn> = layout
+        .columns
+        .iter()
+        .map(|c| GridColumn {
+            width: c.char_width.clamp(1, 16),
+            kind: RVColumnKind::from_raw(c.kind).unwrap_or(RVColumnKind::Custom),
+        })
+        .collect();
+    PatternGrid::new(
+        layout.pattern_channels.len(),
+        &columns,
+        PATTERN_ROW_BUDGET as usize,
+    )
+}
+
+fn layout_doc(layout: &Arc<VizLayout>) -> LayoutDoc {
+    LayoutDoc {
+        scroll_mode: if layout.scroll_mode == RVScrollMode::PerChannel {
+            "per_channel"
+        } else {
+            "synchronized"
+        },
+        columns: layout
+            .columns
+            .iter()
+            .map(|c| ColumnDoc {
+                label: padded(&c.label).to_owned(),
+                width: c.char_width,
+                kind: match RVColumnKind::from_raw(c.kind) {
+                    Some(RVColumnKind::Note) => "note",
+                    Some(RVColumnKind::Instrument) => "instrument",
+                    Some(RVColumnKind::Volume) => "volume",
+                    Some(RVColumnKind::Effect) => "effect",
+                    Some(RVColumnKind::Param) => "param",
+                    Some(RVColumnKind::Custom) | None => "custom",
+                },
+            })
+            .collect(),
+        pattern_channels: layout
+            .pattern_channels
+            .iter()
+            .map(|c| padded(&c.name).to_owned())
+            .collect(),
+        scope_channels: layout
+            .scope_channels
+            .iter()
+            .map(|c| padded(&c.name).to_owned())
+            .collect(),
+    }
+}
+
+/// A NUL-padded UTF-8 field as text.
+fn padded(bytes: &[u8]) -> &str {
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    std::str::from_utf8(&bytes[..end]).unwrap_or("")
+}
+
+/// Writes rows `lo..hi` of the published pattern into `out`; see [`PatternGrid::copy_rows`].
+pub fn copy_cells(front: &Front, lo: u32, hi: u32, out: &mut [GridCell]) -> usize {
+    front.grid.copy_rows(lo, hi, out)
 }
 
 fn playlist_mode(mode: LoopMode) -> Mode {
