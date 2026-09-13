@@ -89,6 +89,9 @@ callback drained it meant one 2048-frame burst about 24 times a second, and the 
 that rate. The worker now earns frames at the sample rate and renders that many per loop, so
 the ring hovers just under its 0.2 s target and every capture sees fresh samples. The ring is
 refilled at full speed only below a quarter of its depth: at mount and after a stall. The
+decoder has to keep the same promise: libopenmpt's scope patch advances every channel's ring by
+the frames of each mixing pass, padding silence where the channel was not mixed, so a note
+that ends scrolls out instead of freezing until a staleness rule blanks it. The
 remaining ceiling is the decoder's: hively mixes in 50 Hz tracker ticks of 960 frames and writes
 its scope buffer while mixing, so the scopes change 50 times a second, not 60. Mixing per
 `read_data` request instead of per tick is a plugin change, if it is ever wanted.
