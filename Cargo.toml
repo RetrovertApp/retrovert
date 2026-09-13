@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/catalog",
     "crates/desktop",
+    "crates/library",
     "crates/player",
     "crates/present",
     "crates/playlist",
@@ -19,6 +20,7 @@ repository = "https://github.com/RetrovertApp/retrovert"
 
 [workspace.dependencies]
 retrovert-host = { git = "https://github.com/RetrovertApp/retrovert_api.git", rev = "36e0f66fa61e83d0532e1cce1c34b37c9a111a5b" }
+retrovert-library = { path = "crates/library" }
 retrovert-player = { path = "crates/player" }
 retrovert-tuf = { path = "crates/tuf", version = "0.1.0" }
 retrovert-updater = { path = "crates/updater" }

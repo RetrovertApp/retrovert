@@ -14,9 +14,13 @@ crate-type = ["staticlib", "rlib"]
 cpal = "0.15"
 env_logger = "0.11"
 log = "0.4"
+playlist-engine = { path = "../../crates/playlist" }
 retrovert-host.workspace = true
+retrovert-library.workspace = true
 retrovert-player.workspace = true
 retrovert-present = { path = "../../crates/present" }
+serde.workspace = true
+serde_json.workspace = true
 
 [build-dependencies]
 cbindgen = "0.29"

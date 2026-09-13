@@ -30,6 +30,7 @@ qt_add_qml_module(retrovert_quickshell
     SOURCES
         session.h session.cpp
         scope.h scope.cpp
+        vu.h vu.cpp
 )
 
 target_link_libraries(retrovert_quickshell PRIVATE

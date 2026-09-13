@@ -16,8 +16,9 @@ ui-quickshell/
 ```
 
 Everything a renderer needs to decide lives in `crates/present`, which is plain Rust with no
-Qt: scope polylines, and later VU decay, the pattern grid and theme tokens. Any other UI,
-such as a flowi window, consumes the same crate. What is here is only the Omarchy binding.
+Qt: scope polylines and VU decay now, the pattern grid and theme tokens later. The library a
+UI lists is `crates/library`, also Qt-free. Any other UI, such as a flowi window, consumes
+the same crates. What is here is only the Omarchy binding.
 
 ## Decisions
 
@@ -43,6 +44,7 @@ data directory and falls back to the baseline when nothing else loads. Not built
 ./build.sh                                  # release; ./build.sh debug for a dev profile of the bridge
 ./run.sh song.hvl                           # every decoder from ../../playback_plugins/build/plugins
 ./run.sh --plugins DIR song.hvl             # DIR holds decoder .so files, searched recursively
+./run.sh --library ~/Music song.hvl         # the directory the table lists; default: ~/Music, else the song's own
 ./run.sh                                    # no song: the scopes show a synthetic waveform
 ./run.sh --renderer opengl song.hvl         # skip the Vulkan probe
 ```
@@ -68,7 +70,9 @@ loads every `.so` under the directory it is given. A single decoder builds the s
 own directory, `cmake -S plugins/hively -B build-hively -G Ninja`, and is passed with `--plugins`.
 `cargo run -p retrovert-ui-bridge --example probe -- DIR SONG` mounts a
 song outside the shell and prints the layout and scope counts, which is the first thing to run
-when the window says no plugin accepted the media.
+when the window says no plugin accepted the media. `--example drive -- DIR LIBRARY` scans a
+small directory and walks the queue and transport through the C ABI, printing the state after
+each step: the way to check the engine's behaviour without clicking.
 
 ## How playback runs
 
@@ -93,6 +97,28 @@ its scope buffer while mixing, so the scopes change 50 times a second, not 60. M
 worker loads its decoders at construction and QML assigns initial properties in no fixed order:
 built earlier, it would load from an empty `pluginDir`.
 
+The worker also owns the playlist (`crates/playlist`) and the library. `open` makes a queue of
+one song; clicking a table row plays the visible rows from there, in the table's order, and
+the queue is what follows the playing item. When a song ends the loop mode decides: off stops
+at the end of the queue, one seeks the song back to zero, all restarts the queue. Decoders
+that report no VU levels are metered from their scope samples, in `crates/present`.
+
+The library is built in two steps because the decoders live on the worker and load only
+once. A helper thread walks the directory, which touches no decoder; the worker then keeps
+the files some decoder claims by extension (or `mod.name` prefix) and describes one per loop
+with `probe_metadata`, only while the ring holds at least half its depth, so a scan never
+starves the device. Rows are published every hundred files or 400 ms.
+
+## What crosses the C ABI
+
+Per-frame data is fixed-size: `RvState` (status, position, duration, subsong, tracker
+position, loop, volume, library progress, and a revision counter per document), the scope
+points and the VU levels, each copied into a caller-owned buffer under the front lock.
+Everything that changes at song rate and can be large, the library rows, the playing song's
+metadata and the queue, is a JSON document read with `rv_ui_document` when its revision
+moves. The shim parses each into a `QVariantMap`; QML filters, sorts and groups the rows
+itself. Growing a document changes no signature.
+
 ## The screens
 
 `ui-ref/` holds the design: `retrovert-2a-library.png` is the library mode and `retrovert-2b-hero.png`
@@ -107,9 +133,13 @@ every component has to be listed in it; a file that is not is "not a type".
 
 ## State
 
-`retrovert-gui song.hvl` opens the library screen and plays the song: the transport shows the
-song's name, plugin, channel count and elapsed time from the engine, while the rail, table,
-module facts, samples, queue, meters, duration and volume are `ui/Mock.qml`'s placeholder
-content from the design. Not yet: the catalog and playlist crates behind the table and queue,
-the 2b pattern view, the scopes and VU on real data, pause and seek, keyboard navigation,
-a second invocation reaching the running window over Quickshell IPC, and the package.
+`retrovert-gui --library DIR song.hvl` opens the library screen on real data throughout: the
+rail groups the scanned rows by claimed extension and by the directory each file sits in, the
+table searches, sorts and plays them, the panel shows the decoder's metadata, sample names and
+the queue, and the transport has play/pause, previous/next, seek on the progress rule, subsong,
+loop, the channel meter, the tracker position and the volume. Two departures from the mockup:
+the table's `CH` column is `SUB` (subsong count), because a channel count needs the song
+mounted, and the output line reads the rate and layout since the engine has no filter control.
+Not yet: the plugin catalog behind the shell, the 2b pattern view with the scopes on screen,
+keyboard navigation, a second invocation reaching the running window over Quickshell IPC,
+and the package.

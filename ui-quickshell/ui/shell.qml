@@ -9,8 +9,9 @@ import Retrovert
 import "."
 
 // One window, one Rust session with the engine inside it, and the library screen over it,
-// coloured by the Omarchy theme. RETROVERT_SONG names the file
-// to play and RETROVERT_PLUGINS the directory of decoders; run.sh sets both.
+// coloured by the Omarchy theme. RETROVERT_SONG names the file to play, RETROVERT_PLUGINS
+// the directory of decoders and RETROVERT_LIBRARY the directory the library lists; the
+// launcher sets all three.
 ShellRoot {
     // qs is a shell and outlives its windows by default; this is an application, so closing
     // the window ends the process. Stopping first lets the worker drop the decoder cleanly.
@@ -49,23 +50,16 @@ ShellRoot {
             pluginDir: Quickshell.env("RETROVERT_PLUGINS") || ""
             running: true
             Component.onCompleted: {
+                var library = Quickshell.env("RETROVERT_LIBRARY")
+                if (library) scanLibrary(library)
                 var song = Quickshell.env("RETROVERT_SONG")
                 if (song) open(song)
             }
         }
 
-        // The engine's own facts reach the screen; the rest is the design's placeholder
-        // content until the catalog and playlist crates feed it.
         Library {
             anchors.fill: parent
-            readonly property string song: (Quickshell.env("RETROVERT_SONG") || "").split("/").pop()
-            title: player.error.length > 0 ? player.error
-                 : song.length > 0 ? song.replace(/\.[^.]+$/, "") : "no song"
-            subtitle: player.status === "idle" ? "demo waveform"
-                    : player.plugin + " · " + player.scopeChannels + "ch"
-            elapsedMs: player.positionMs
-            playing: player.status === "playing"
-            status: player.status
+            session: player
         }
     }
 }

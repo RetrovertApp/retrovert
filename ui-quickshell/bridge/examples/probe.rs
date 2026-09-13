@@ -38,8 +38,10 @@ fn main() {
                 let n = backend.render(1024).unwrap().len();
                 backend.capture(&mut snap).unwrap();
                 println!(
-                    "rendered {n} samples; scope counts {:?}",
-                    snap.scope_counts()
+                    "rendered {n} samples; scope counts {:?}; vu {:?}; position {:?}",
+                    snap.scope_counts(),
+                    snap.vu(),
+                    snap.position
                 );
             }
         }

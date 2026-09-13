@@ -1,17 +1,20 @@
 import QtQuick
+import Retrovert
 import "."
 
 // The library screen, ui-ref/retrovert-2a-library.png: rail, table, module panel over a
-// transport bar. Content is placeholder until the catalog and playlist feed it; what the
-// engine already knows (title, plugin, position) is passed in from shell.qml.
+// transport bar. Everything on it reads from one Session: the rail and table from its
+// library document, the panel from its track and queue documents, the transport from its
+// per-frame state. The rail's selection and the table's search and sort live here, the one
+// place both can see them.
 Rectangle {
     id: root
-    property alias title: transport.title
-    property alias subtitle: transport.subtitle
-    property alias elapsedMs: transport.elapsedMs
-    property alias durationMs: transport.durationMs
-    property alias playing: transport.playing
-    property alias status: panel.status
+    required property Session session
+    // Empty means every format, every collection.
+    property string formatFilter: ""
+    property string collectionFilter: ""
+    property string search: ""
+    property string sortKey: "added"
 
     color: Theme.color.background
 
@@ -22,6 +25,7 @@ Rectangle {
         anchors.bottom: parent.bottom
         height: 84
         z: 1
+        session: root.session
     }
     LibraryRail {
         id: rail
@@ -29,6 +33,8 @@ Rectangle {
         anchors.top: parent.top
         anchors.bottom: transport.top
         width: 220
+        session: root.session
+        screen: root
     }
     ModulePanel {
         id: panel
@@ -36,12 +42,14 @@ Rectangle {
         anchors.top: parent.top
         anchors.bottom: transport.top
         width: 320
-        title: transport.title
+        session: root.session
     }
     LibraryTable {
         anchors.left: rail.right
         anchors.right: panel.left
         anchors.top: parent.top
         anchors.bottom: transport.top
+        session: root.session
+        screen: root
     }
 }

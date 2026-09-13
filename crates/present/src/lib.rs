@@ -102,6 +102,83 @@ impl ScopeTrace {
     }
 }
 
+/// Fixed-capacity VU levels with a fall rate, refilled in place per frame.
+///
+/// A decoder reports the instantaneous level of each channel; a meter that showed it raw
+/// would flicker at the capture rate. Each level jumps up to a louder reading at once and
+/// falls from a quieter one by `fall` per tick, so a hit stays visible for a few frames.
+#[derive(Debug)]
+pub struct VuMeter {
+    levels: Box<[f32]>,
+    len: usize,
+    fall: f32,
+}
+
+impl VuMeter {
+    /// Reserves `capacity` channels falling by `fall` (of full scale) per tick. Setup cadence.
+    #[must_use]
+    pub fn new(capacity: usize, fall: f32) -> Self {
+        Self {
+            levels: vec![0.0; capacity.max(1)].into_boxed_slice(),
+            len: 0,
+            fall: fall.max(0.0),
+        }
+    }
+
+    /// The levels populated by the last [`VuMeter::tick`], one per channel in 0..=1.
+    #[must_use]
+    pub fn levels(&self) -> &[f32] {
+        &self.levels[..self.len]
+    }
+
+    /// Feeds one capture's readings: each channel rises to its reading at once and otherwise
+    /// falls by the meter's rate. Channels past the capacity are dropped; a shorter reading
+    /// shrinks the meter to its length.
+    pub fn tick(&mut self, readings: &[f32]) {
+        let n = readings.len().min(self.levels.len());
+        for (level, &reading) in self.levels[..n].iter_mut().zip(readings) {
+            let reading = reading.clamp(0.0, 1.0);
+            *level = if reading >= *level {
+                reading
+            } else {
+                (*level - self.fall).max(reading)
+            };
+        }
+        self.len = n;
+    }
+
+    /// Feeds one capture. A decoder that reports VU levels is believed; one that reports only
+    /// scopes is metered by each channel's peak over the capture, so every song has a meter.
+    pub fn tick_from(&mut self, snapshot: &VizSnapshot) {
+        if !snapshot.vu().is_empty() {
+            self.tick(snapshot.vu());
+            return;
+        }
+        let channels = snapshot.scope_counts().len().min(self.levels.len());
+        for channel in 0..channels {
+            let reading = snapshot
+                .scope(channel)
+                .unwrap_or(&[])
+                .iter()
+                .fold(0.0_f32, |peak, s| peak.max(s.abs()))
+                .clamp(0.0, 1.0);
+            let level = &mut self.levels[channel];
+            *level = if reading >= *level {
+                reading
+            } else {
+                (*level - self.fall).max(reading)
+            };
+        }
+        self.len = channels;
+    }
+
+    /// Drops every level to silence, as when a song is unmounted.
+    pub fn clear(&mut self) {
+        self.levels.fill(0.0);
+        self.len = 0;
+    }
+}
+
 #[cfg(test)]
 // Exact comparison is the point: these are values the trace copies or clamps, not computes.
 #[allow(clippy::float_cmp)]
@@ -164,5 +241,25 @@ mod tests {
         trace.fill(&[0.0; 3]);
         assert_eq!(trace.points.as_ptr(), before);
         assert_eq!(trace.capacity(), 16);
+    }
+
+    #[test]
+    fn vu_rises_at_once_and_falls_by_the_rate() {
+        let mut meter = VuMeter::new(4, 0.25);
+        meter.tick(&[1.0, 0.5]);
+        assert_eq!(meter.levels(), &[1.0, 0.5]);
+        meter.tick(&[0.0, 0.0]);
+        assert_eq!(meter.levels(), &[0.75, 0.25]);
+        meter.tick(&[0.0, 0.9]);
+        assert_eq!(meter.levels(), &[0.5, 0.9]);
+    }
+
+    #[test]
+    fn vu_clamps_readings_and_drops_channels_past_capacity() {
+        let mut meter = VuMeter::new(2, 0.1);
+        meter.tick(&[3.0, -1.0, 0.5]);
+        assert_eq!(meter.levels(), &[1.0, 0.0]);
+        meter.clear();
+        assert!(meter.levels().is_empty());
     }
 }

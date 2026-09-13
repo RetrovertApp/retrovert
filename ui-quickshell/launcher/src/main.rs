@@ -42,6 +42,10 @@ struct Args {
     /// Directory of decoder plugins (.so). Defaults to the packaged set.
     #[arg(long, env = "RETROVERT_PLUGINS")]
     plugins: Option<PathBuf>,
+    /// Directory the library lists, searched recursively. Defaults to ~/Music, else the
+    /// song's own directory.
+    #[arg(long, env = "RETROVERT_LIBRARY")]
+    library: Option<PathBuf>,
     /// Directory holding shell.qml. Defaults to the packaged shell, then the dev tree.
     #[arg(long, env = "RETROVERT_UI")]
     ui: Option<PathBuf>,
@@ -85,13 +89,23 @@ fn main() {
         import_path.push(existing);
     }
     cmd.env("QML2_IMPORT_PATH", import_path);
-    match args.song {
+    let song = args
+        .song
+        .map(|song| std::fs::canonicalize(&song).unwrap_or(song));
+    match &song {
         Some(song) => {
-            let song = std::fs::canonicalize(&song).unwrap_or(song);
             cmd.env("RETROVERT_SONG", song);
         }
         None => {
             cmd.env_remove("RETROVERT_SONG");
+        }
+    }
+    match library_root(args.library, song.as_deref()) {
+        Some(library) => {
+            cmd.env("RETROVERT_LIBRARY", library);
+        }
+        None => {
+            cmd.env_remove("RETROVERT_LIBRARY");
         }
     }
     choose_renderer(&mut cmd, args.renderer);
@@ -107,6 +121,20 @@ fn main() {
     let error = cmd.exec();
     eprintln!("retrovert-gui: could not start qs: {error}");
     std::process::exit(1);
+}
+
+/// An explicit `--library`, else `~/Music` when it exists, else the directory the song lives
+/// in. The music directory comes before the song's own because a song opened from a scratch
+/// or download directory should not turn that directory into the library.
+fn library_root(explicit: Option<PathBuf>, song: Option<&Path>) -> Option<PathBuf> {
+    if let Some(root) = explicit {
+        return Some(root);
+    }
+    let music = std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Music"));
+    if let Some(music) = music.filter(|m| m.is_dir()) {
+        return Some(music);
+    }
+    song.and_then(Path::parent).map(Path::to_path_buf)
 }
 
 /// An explicit choice, then the packaged path, then the dev tree beside this crate.

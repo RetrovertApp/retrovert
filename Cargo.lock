@@ -1302,6 +1302,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "retrovert-library"
+version = "0.1.0"
+dependencies = [
+ "retrovert-host",
+ "serde",
+ "tempfile",
+]
+
+[[package]]
 name = "retrovert-player"
 version = "0.1.0"
 dependencies = [
@@ -1387,9 +1396,13 @@ dependencies = [
  "cpal",
  "env_logger",
  "log",
+ "playlist-engine",
  "retrovert-host",
+ "retrovert-library",
  "retrovert-player",
  "retrovert-present",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

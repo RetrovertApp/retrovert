@@ -7,7 +7,7 @@ style = "both"
 
 [export]
 prefix = "Rv"
-include = ["ScopePoint", "State", "Status"]
+include = ["ScopePoint", "State", "Status", "LoopMode", "Document"]
 
 [enum]
 prefix_with_name = true

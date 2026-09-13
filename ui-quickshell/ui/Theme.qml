@@ -57,6 +57,28 @@ Singleton {
     }
     readonly property int cornerRadius: Style.cornerRadius
 
+    // m:ss from milliseconds, the clock everywhere a length is shown.
+    function clock(ms) {
+        var s = Math.max(0, Math.floor(ms / 1000))
+        return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")
+    }
+    // A long span: "9d 06h", "3h 12m", else m:ss.
+    function span(ms) {
+        var minutes = Math.floor(ms / 60000)
+        if (minutes >= 24 * 60) return Math.floor(minutes / 1440) + "d " + String(Math.floor(minutes % 1440 / 60)).padStart(2, "0") + "h"
+        if (minutes >= 60) return Math.floor(minutes / 60) + "h " + String(minutes % 60).padStart(2, "0") + "m"
+        return clock(ms)
+    }
+    // Thousands separated, the way the design writes counts.
+    function count(n) {
+        return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+    }
+    // A path with the home directory as ~.
+    function tilde(path) {
+        var home = Quickshell.env("HOME")
+        return home && path.indexOf(home) === 0 ? "~" + path.slice(home.length) : path
+    }
+
     // Colour for a format tag, the design's fmtColor table.
     function formatColor(fmt) {
         switch (fmt) {
