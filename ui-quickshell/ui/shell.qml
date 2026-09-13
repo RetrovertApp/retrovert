@@ -8,8 +8,8 @@ import QtQuick
 import Retrovert
 import "."
 
-// One window, one Rust session with the engine inside it, one scope per channel drawn by the
-// scene-graph item in ../shim, coloured by the Omarchy theme. RETROVERT_SONG names the file
+// One window, one Rust session with the engine inside it, and the library screen over it,
+// coloured by the Omarchy theme. RETROVERT_SONG names the file
 // to play and RETROVERT_PLUGINS the directory of decoders; run.sh sets both.
 ShellRoot {
     // qs is a shell and outlives its windows by default; this is an application, so closing
@@ -22,8 +22,8 @@ ShellRoot {
     FloatingWindow {
         id: window
         title: "Retrovert"
-        implicitWidth: 800
-        implicitHeight: 480
+        implicitWidth: 1416
+        implicitHeight: 850
         color: Theme.color.background
 
         // Vulkan failing after launch raises this; only the launcher's own automatic choice may
@@ -54,45 +54,18 @@ ShellRoot {
             }
         }
 
-        Column {
+        // The engine's own facts reach the screen; the rest is the design's placeholder
+        // content until the catalog and playlist crates feed it.
+        Library {
             anchors.fill: parent
-            anchors.margins: 16
-            spacing: 8
-
-            Text {
-                id: caption
-                text: player.error.length > 0 ? player.error
-                    : player.status === "idle" ? "no song, showing the demo waveform"
-                    : (Quickshell.env("RETROVERT_SONG") || "").split("/").pop() + "  ·  " + player.plugin + "  ·  "
-                      + player.status + "  ·  " + Math.floor(player.positionMs / 1000) + " s  ·  "
-                      + player.scopeChannels + " channels"
-                color: player.error.length > 0 ? Theme.color.accent : Theme.color.muted
-                font.family: Theme.fontFamily
-                elide: Text.ElideMiddle
-                width: parent.width
-            }
-
-            Repeater {
-                model: player.scopeChannels
-                Rectangle {
-                    required property int index
-                    width: parent.width
-                    height: (parent.height - caption.height - 8 * player.scopeChannels) / player.scopeChannels
-                    color: "transparent"
-                    border.color: Theme.color.muted
-                    border.width: 1
-                    radius: Theme.cornerRadius
-
-                    Scope {
-                        anchors.fill: parent
-                        anchors.margins: 4
-                        session: player
-                        channel: parent.index
-                        color: parent.index === 0 ? Theme.color.accent : Theme.color.foreground
-                        lineWidth: 1
-                    }
-                }
-            }
+            readonly property string song: (Quickshell.env("RETROVERT_SONG") || "").split("/").pop()
+            title: player.error.length > 0 ? player.error
+                 : song.length > 0 ? song.replace(/\.[^.]+$/, "") : "no song"
+            subtitle: player.status === "idle" ? "demo waveform"
+                    : player.plugin + " · " + player.scopeChannels + "ch"
+            elapsedMs: player.positionMs
+            playing: player.status === "playing"
+            status: player.status
         }
     }
 }

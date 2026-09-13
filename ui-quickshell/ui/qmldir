@@ -1,1 +1,11 @@
 singleton Theme 1.0 Theme.qml
+singleton Mock 1.0 Mock.qml
+Caption 1.0 Caption.qml
+Mono 1.0 Mono.qml
+FormatTag 1.0 FormatTag.qml
+RailRow 1.0 RailRow.qml
+LibraryRail 1.0 LibraryRail.qml
+LibraryTable 1.0 LibraryTable.qml
+ModulePanel 1.0 ModulePanel.qml
+Transport 1.0 Transport.qml
+Library 1.0 Library.qml

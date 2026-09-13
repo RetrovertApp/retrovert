@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html>
+<head><template id="__bundler_thumbnail" data-bg-color="#1a1b26"><svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg"><rect x="360" y="240" width="480" height="320" fill="none" stroke="#7aa2f7" stroke-width="16"/><polygon points="540,330 540,470 680,400" fill="#c0caf5"/></svg></template>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#0d0d12;font-family:'JetBrains Mono',ui-monospace,monospace;color:#c0caf5}a{color:#7aa2f7}a:hover{color:#bb9af7}::selection{background:#7aa2f7;color:#1a1b26}</style></helmet>
+<section id="t2" style="padding:36px 40px 40px;display:flex;flex-direction:column;gap:22px;border-bottom:1px solid #24283b">
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:880px">
+    <div style="display:flex;align-items:baseline;gap:10px"><a href="#t2" style="font:600 10px 'JetBrains Mono',monospace;padding:3px 7px;background:#c0caf5;color:#1a1b26;text-decoration:none">2</a><span style="font:600 13px 'IBM Plex Sans',sans-serif;color:#c0caf5">Demoscene / game music focus · two modes</span></div>
+    <p style="margin:0;font:12px/1.6 'IBM Plex Sans',sans-serif;color:#7d86ab;text-wrap:pretty">Library is reorganised around what tracker and chip music actually carries: format (MOD, XM, IT, SID, SPC, VGM, AHX, NSF), channel count, composer and group, year, subsongs, and the sample/instrument list and message stored in the file. <a href="#2a" style="color:#c0caf5;text-decoration:none;background:#24283b;padding:2px 6px;font:600 10.5px 'JetBrains Mono',monospace">2a</a> evolves <a href="#1a" style="color:#c0caf5;text-decoration:none;background:#24283b;padding:2px 6px;font:600 10.5px 'JetBrains Mono',monospace">1a</a> into the browsing mode; <a href="#2b" style="color:#c0caf5;text-decoration:none;background:#24283b;padding:2px 6px;font:600 10.5px 'JetBrains Mono',monospace">2b</a> is the hero mode from <a href="#1b" style="color:#c0caf5;text-decoration:none;background:#24283b;padding:2px 6px;font:600 10.5px 'JetBrains Mono',monospace">1b</a>: pattern scroller, per-channel scopes, order list and samples, meant for fullscreen (super+f). The pattern and scopes animate.</p>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start">
+
+  <!-- 2a -->
+  <div id="2a" style="display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px">
+    <div style="display:flex;align-items:baseline;gap:8px;font:11px 'IBM Plex Sans',sans-serif;color:#7d86ab"><a href="#2a" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:#24283b;color:#c0caf5;text-decoration:none">2a</a>Library mode · formats and collections, module table, module info + queue, subsongs and channel meters in the transport</div>
+    <div style="width:1440px;height:900px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 30% 20%,#1c2140 0%,#0b0b12 60%);--bg:{{ t.bg }};--bg2:{{ t.bg2 }};--bg3:{{ t.bg3 }};--fg:{{ t.fg }};--fg2:{{ t.fg2 }};--mute:{{ t.mute }};--line:{{ t.line }};--accent:{{ t.accent }};--accent2:{{ t.accent2 }};--green:{{ t.green }};--red:{{ t.red }};--yellow:{{ t.yellow }}">
+      <sc-if value="{{ showBar }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;left:0;right:0;top:0;height:26px;background:var(--bg,#1a1b26);display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:12px;color:var(--fg2,#a9b1d6)">
+        <div style="display:flex;gap:10px"><span style="color:var(--accent,#7aa2f7);font-weight:600">1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
+        <div style="color:var(--fg,#c0caf5)">retrovert</div>
+        <div style="display:flex;gap:14px"><span>wifi</span><span>vol 40%</span><span>bat 87%</span><span style="color:var(--fg,#c0caf5)">Sat 13 Sep 14:32</span></div>
+      </div>
+      </sc-if>
+      <div style="position:absolute;left:10px;right:10px;top:36px;bottom:10px;border:2px solid var(--accent,#7aa2f7);background:var(--bg,#1a1b26);display:grid;grid-template-columns:220px minmax(0,1fr) 320px;grid-template-rows:minmax(0,1fr) 84px;font-family:'IBM Plex Sans',sans-serif;color:var(--fg,#c0caf5)">
+        <div style="border-right:1px solid var(--line,#292e42);background:var(--bg2,#16161e);padding:18px 0;display:flex;flex-direction:column;gap:22px">
+          <div style="padding:0 18px;font:600 12px 'JetBrains Mono',monospace;letter-spacing:.18em">RETROVERT</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="padding:0 18px 6px;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--mute,#565f89)">FORMATS</div>
+            <sc-for list="{{ navFmt }}" as="n" hint-placeholder-count="7">
+              <div style="display:flex;justify-content:space-between;padding:6px 18px;font-size:13px;color:{{ n.color }};background:{{ n.bg }};border-left:2px solid {{ n.border }}"><span>{{ n.label }}</span><span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ n.count }}</span></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="padding:0 18px 6px;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--mute,#565f89)">COLLECTIONS</div>
+            <sc-for list="{{ collections }}" as="p" hint-placeholder-count="4">
+              <div style="display:flex;justify-content:space-between;padding:6px 18px;font-size:13px;color:var(--fg2,#a9b1d6);border-left:2px solid transparent"><span>{{ p.name }}</span><span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ p.count }}</span></div>
+            </sc-for>
+          </div>
+          <div style="margin-top:auto;padding:0 18px;font:11px/1.6 'JetBrains Mono',monospace;color:var(--mute,#565f89);display:flex;flex-direction:column"><span>~/Music/modules · 4,812 files</span><span>libopenmpt · libsidplayfp · game-music-emu</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;min-width:0">
+          <div style="display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--line,#292e42)">
+            <div style="flex:1;display:flex;align-items:center;gap:10px;height:34px;padding:0 12px;border:1px solid var(--line,#292e42);background:var(--bg2,#16161e);font:12px 'JetBrains Mono',monospace;color:var(--mute,#565f89)"><span style="color:var(--fg2,#a9b1d6)">/</span><span>title, composer, group, format:xm, ch:&gt;8, year:199x</span></div>
+            <div style="display:flex;gap:6px;font:11px 'JetBrains Mono',monospace"><span style="padding:6px 10px;background:var(--bg3,#24283b)">Added</span><span style="padding:6px 10px;color:var(--fg2,#a9b1d6)">Year</span><span style="padding:6px 10px;color:var(--fg2,#a9b1d6)">Composer</span><span style="padding:6px 10px;color:var(--fg2,#a9b1d6)">Plays</span></div>
+          </div>
+          <div style="padding:18px 22px 0;display:flex;flex-direction:column;min-height:0">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px"><span style="font:500 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--mute,#565f89)">ALL FORMATS</span><span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">4,812 · 9d 06h</span></div>
+            <div style="display:grid;grid-template-columns:32px minmax(0,2fr) minmax(0,1.1fr) minmax(0,1.1fr) 44px 30px 44px 48px;gap:0 14px;padding:6px 10px;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.1em;color:var(--mute,#565f89);border-bottom:1px solid var(--line,#292e42)"><span>#</span><span>TITLE</span><span>COMPOSER</span><span>GROUP</span><span>FMT</span><span style="text-align:right">CH</span><span style="text-align:right">YEAR</span><span style="text-align:right">TIME</span></div>
+            <sc-for list="{{ modsA }}" as="r" hint-placeholder-count="16">
+              <div style="display:grid;grid-template-columns:32px minmax(0,2fr) minmax(0,1.1fr) minmax(0,1.1fr) 44px 30px 44px 48px;gap:0 14px;align-items:center;padding:0 10px;height:33px;font-size:13px;color:{{ r.color }};background:{{ r.bg }}" style-hover="background:var(--bg3,#24283b)">
+                <span style="font:11px 'JetBrains Mono',monospace;color:{{ r.numColor }}">{{ r.num }}</span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:{{ r.weight }}">{{ r.title }}</span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg2,#a9b1d6)">{{ r.composer }}</span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mute,#565f89)">{{ r.group }}</span>
+                <span style="font:10px 'JetBrains Mono',monospace;padding:2px 5px;border:1px solid var(--line,#292e42);color:{{ r.fmtColor }};text-align:center">{{ r.fmt }}</span>
+                <span style="text-align:right;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ r.ch }}</span>
+                <span style="text-align:right;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ r.year }}</span>
+                <span style="text-align:right;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ r.dur }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="border-left:1px solid var(--line,#292e42);background:var(--bg2,#16161e);display:flex;flex-direction:column;min-height:0;font-family:'JetBrains Mono',monospace">
+          <div style="padding:18px 18px 0;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:10px;letter-spacing:.14em;color:var(--mute,#565f89);font-weight:500">MODULE</span><span style="font-size:11px;color:var(--accent,#7aa2f7)">▶ playing</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font:600 15px 'IBM Plex Sans',sans-serif">Phosphor Dreams</span><span style="font:13px 'IBM Plex Sans',sans-serif;color:var(--fg2,#a9b1d6)">Tesseract / Pulsewidth · 1999</span></div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-size:11px;color:var(--mute,#565f89)">
+              <span>format</span><span style="color:var(--fg2,#a9b1d6)">IT · Impulse Tracker 2.14</span>
+              <span>channels</span><span style="color:var(--fg2,#a9b1d6)">16</span>
+              <span>patterns</span><span style="color:var(--fg2,#a9b1d6)">38 · 52 orders</span>
+              <span>samples</span><span style="color:var(--fg2,#a9b1d6)">31 · 24 instruments</span>
+              <span>subsong</span><span style="color:var(--fg2,#a9b1d6)">1 / 1</span>
+              <span>file</span><span style="color:var(--fg2,#a9b1d6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">tsr-phosphor.it · 412 KB</span>
+            </div>
+          </div>
+          <div style="padding:16px 18px 0;display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:10px;letter-spacing:.14em;color:var(--mute,#565f89);font-weight:500">SAMPLES</span>
+            <div style="height:132px;overflow:hidden;font-size:11px;line-height:1.55;color:var(--fg2,#a9b1d6);display:flex;flex-direction:column;-webkit-mask-image:linear-gradient(#000 70%,transparent)">
+              <sc-for list="{{ samples }}" as="s" hint-placeholder-count="8"><span style="white-space:pre">{{ s }}</span></sc-for>
+            </div>
+          </div>
+          <div style="padding:14px 18px 6px;display:flex;justify-content:space-between;font-size:10px;letter-spacing:.14em;color:var(--mute,#565f89);font-weight:500"><span>QUEUE</span><span style="letter-spacing:0;font-size:11px;font-weight:400">7 · 25:18</span></div>
+          <sc-for list="{{ queueMods }}" as="q" hint-placeholder-count="7">
+            <div style="display:grid;grid-template-columns:36px minmax(0,1fr) 40px;gap:0 10px;padding:0 18px;height:26px;align-items:center;font-size:12px">
+              <span style="font-size:10px;color:var(--mute,#565f89)">{{ q.fmt }}</span>
+              <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'IBM Plex Sans',sans-serif;font-size:12.5px">{{ q.title }} <span style="color:var(--mute,#565f89)">· {{ q.composer }}</span></span>
+              <span style="text-align:right;font-size:11px;color:var(--mute,#565f89)">{{ q.dur }}</span>
+            </div>
+          </sc-for>
+          <div style="margin-top:auto;padding:12px 18px;border-top:1px solid var(--line,#292e42);display:flex;justify-content:space-between;font-size:11px;color:var(--mute,#565f89)"><span>then: shuffle Party releases 2025</span><span style="color:var(--fg2,#a9b1d6)">clear</span></div>
+        </div>
+        <div style="grid-column:1 / -1;border-top:1px solid var(--line,#292e42);background:var(--bg2,#16161e);display:grid;grid-template-columns:320px minmax(0,1fr) 320px;align-items:center;padding:0 18px;gap:20px;position:relative">
+          <div style="position:absolute;left:0;right:0;top:-1px;height:2px;background:var(--line,#292e42)"><div style="height:100%;background:var(--accent,#7aa2f7);width:{{ progressPct }}"></div></div>
+          <div style="display:flex;gap:12px;align-items:center;min-width:0">
+            <div style="width:52px;height:52px;flex:none;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(4,1fr);gap:2px;border:1px solid var(--line,#292e42);padding:4px;background:var(--bg,#1a1b26)">
+              <sc-for list="{{ vu }}" as="v" hint-placeholder-count="16"><div style="background:var(--accent,#7aa2f7);opacity:{{ v }}"></div></sc-for>
+            </div>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Phosphor Dreams</span><span style="font-size:12px;color:var(--fg2,#a9b1d6)">Tesseract / Pulsewidth · IT 16ch</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+            <div style="display:flex;align-items:center;gap:22px;font:14px 'JetBrains Mono',monospace;color:var(--fg2,#a9b1d6)">
+              <span style="font-size:11px;color:var(--mute,#565f89)">sub ‹ 1/1 ›</span><span>◀◀</span>
+              <span style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:var(--fg,#c0caf5);color:var(--bg,#1a1b26);font-size:12px">❚❚</span>
+              <span>▶▶</span><span style="font-size:11px;color:var(--mute,#565f89)">loop ↻ 2×</span>
+            </div>
+            <div style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)"><span style="color:var(--fg2,#a9b1d6)">{{ elapsed }}</span> / 4:12 &nbsp;·&nbsp; ord <span style="color:var(--fg2,#a9b1d6)">{{ ord }}</span>/52 &nbsp;pat <span style="color:var(--fg2,#a9b1d6)">{{ pat }}</span> &nbsp;row <span style="color:var(--fg2,#a9b1d6)">{{ rowHex }}</span></div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;align-items:center;gap:16px;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">
+            <span style="padding:3px 6px;border:1px solid var(--line,#292e42);color:var(--fg2,#a9b1d6)">48k · amiga filter off</span>
+            <span>vol</span>
+            <div style="width:100px;height:2px;background:var(--line,#292e42)"><div style="width:40%;height:100%;background:var(--fg2,#a9b1d6)"></div></div>
+            <span style="color:var(--fg2,#a9b1d6)">40</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2b -->
+  <div id="2b" style="display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px">
+    <div style="display:flex;align-items:baseline;gap:8px;font:11px 'IBM Plex Sans',sans-serif;color:#7d86ab"><a href="#2b" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:#24283b;color:#c0caf5;text-decoration:none">2b</a>Hero mode · fullscreen pattern scroller, order list, samples, 16 channel scopes</div>
+    <div style="width:1440px;height:900px;position:relative;overflow:hidden;background:var(--bg,#1a1b26);--bg:{{ t.bg }};--bg2:{{ t.bg2 }};--bg3:{{ t.bg3 }};--fg:{{ t.fg }};--fg2:{{ t.fg2 }};--mute:{{ t.mute }};--line:{{ t.line }};--accent:{{ t.accent }};--accent2:{{ t.accent2 }};--green:{{ t.green }};--red:{{ t.red }};--yellow:{{ t.yellow }}">
+      <div style="position:absolute;inset:0;display:grid;grid-template-rows:44px minmax(0,1fr) 150px;font:12px/1.4 'JetBrains Mono',monospace;color:var(--fg,#c0caf5)">
+        <div style="display:flex;align-items:center;gap:0;border-bottom:1px solid var(--line,#292e42);background:var(--bg2,#16161e)">
+          <span style="padding:0 18px;height:100%;display:flex;align-items:center;background:var(--accent,#7aa2f7);color:var(--bg,#1a1b26);font-weight:600;letter-spacing:.14em">RETROVERT</span>
+          <span style="padding:0 18px;font-size:14px;font-weight:600">Phosphor Dreams</span>
+          <span style="color:var(--fg2,#a9b1d6)">Tesseract / Pulsewidth</span>
+          <span style="padding:0 18px;color:var(--mute,#565f89)">· IT · 16ch · 1999 · Impulse Tracker 2.14</span>
+          <span style="margin-left:auto;padding:0 18px;color:var(--mute,#565f89)">ord <span style="color:var(--fg,#c0caf5)">{{ ord }}</span>/52 &nbsp; pat <span style="color:var(--fg,#c0caf5)">{{ pat }}</span> &nbsp; row <span style="color:var(--fg,#c0caf5)">{{ rowHex }}</span> &nbsp; spd 6 &nbsp; bpm 140</span>
+          <span style="padding:0 18px;color:var(--mute,#565f89);border-left:1px solid var(--line,#292e42);height:100%;display:flex;align-items:center">esc: library</span>
+        </div>
+        <div style="display:grid;grid-template-columns:150px minmax(0,1fr) 260px;min-height:0">
+          <div style="border-right:1px solid var(--line,#292e42);background:var(--bg2,#16161e);display:flex;flex-direction:column;min-height:0;padding:12px 0">
+            <div style="padding:0 16px 8px;font-size:10px;letter-spacing:.14em;color:var(--mute,#565f89)">ORDER</div>
+            <div style="display:flex;flex-direction:column;overflow:hidden;-webkit-mask-image:linear-gradient(#000 80%,transparent)">
+              <sc-for list="{{ orders }}" as="o" hint-placeholder-count="20"><div style="display:flex;justify-content:space-between;padding:0 16px;height:22px;align-items:center;font-size:11px;color:{{ o.color }};background:{{ o.bg }}"><span>{{ o.idx }}</span><span>{{ o.pat }}</span></div></sc-for>
+            </div>
+          </div>
+          <div style="position:relative;overflow:hidden;background:var(--bg,#1a1b26)">
+            <div style="position:absolute;left:0;right:0;top:50%;height:26px;margin-top:-13px;background:var(--bg3,#24283b);border-top:1px solid var(--accent,#7aa2f7);border-bottom:1px solid var(--accent,#7aa2f7)"></div>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;font-size:12.5px;letter-spacing:.01em">
+              <sc-for list="{{ patRows }}" as="pr" hint-placeholder-count="21">
+                <div style="display:grid;grid-template-columns:44px repeat(16,minmax(0,1fr));height:26px;align-items:center;color:{{ pr.color }};opacity:{{ pr.opacity }}">
+                  <span style="padding-left:14px;color:var(--mute,#565f89)">{{ pr.n }}</span>
+                  <sc-for list="{{ pr.cells }}" as="c" hint-placeholder-count="16"><span style="white-space:pre;text-align:center;border-left:1px solid var(--line,#292e42)"><span style="color:{{ c.noteColor }}">{{ c.note }}</span> <span style="color:var(--yellow,#e0af68)">{{ c.ins }}</span></span></sc-for>
+                </div>
+              </sc-for>
+            </div>
+            <div style="position:absolute;left:0;right:0;top:0;height:120px;background:linear-gradient(var(--bg,#1a1b26),transparent);pointer-events:none"></div>
+            <div style="position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(transparent,var(--bg,#1a1b26));pointer-events:none"></div>
+          </div>
+          <div style="border-left:1px solid var(--line,#292e42);background:var(--bg2,#16161e);display:flex;flex-direction:column;min-height:0;padding:12px 0">
+            <div style="padding:0 16px 8px;font-size:10px;letter-spacing:.14em;color:var(--mute,#565f89)">SAMPLES</div>
+            <div style="display:flex;flex-direction:column;font-size:11px;line-height:22px;color:var(--fg2,#a9b1d6);padding:0 16px;overflow:hidden">
+              <sc-for list="{{ samplesB }}" as="s" hint-placeholder-count="14"><span style="white-space:pre;color:{{ s.color }}">{{ s.text }}</span></sc-for>
+            </div>
+            <div style="margin-top:auto;padding:12px 16px 0;border-top:1px solid var(--line,#292e42);font-size:11px;line-height:1.6;color:var(--mute,#565f89);white-space:pre-wrap">message:
+"greets to voxelheart, rift crew,
+ cathode kids. made in 3 nights
+ for the party compo."</div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--line,#292e42);background:var(--bg2,#16161e);display:grid;grid-template-rows:minmax(0,1fr) 44px">
+          <div style="display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:1px;background:var(--line,#292e42);border-bottom:1px solid var(--line,#292e42)">
+            <sc-for list="{{ scopes }}" as="s" hint-placeholder-count="16">
+              <div style="position:relative;background:var(--bg2,#16161e);min-width:0">
+                <svg viewBox="0 0 100 40" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;display:block"><polyline points="{{ s.points }}" fill="none" stroke="var(--accent,#7aa2f7)" stroke-width="1.2" vector-effect="non-scaling-stroke"></polyline></svg>
+                <span style="position:absolute;left:6px;top:4px;font-size:10px;color:var(--mute,#565f89)">{{ s.n }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;align-items:center;gap:22px;padding:0 18px;position:relative">
+            <div style="position:absolute;left:0;right:0;top:-1px;height:2px;background:var(--line,#292e42)"><div style="height:100%;background:var(--accent,#7aa2f7);width:{{ progressPct }}"></div></div>
+            <span style="color:var(--fg2,#a9b1d6)">{{ elapsed }} <span style="color:var(--mute,#565f89)">/ 4:12</span></span>
+            <div style="display:flex;align-items:center;gap:18px;color:var(--fg2,#a9b1d6);margin-left:auto;margin-right:auto"><span>◀◀</span><span style="padding:4px 12px;background:var(--fg,#c0caf5);color:var(--bg,#1a1b26)">❚❚</span><span>▶▶</span><span style="color:var(--mute,#565f89)">sub ‹ 1/1 ›</span><span style="color:var(--mute,#565f89)">↻ 2×</span></div>
+            <span style="color:var(--mute,#565f89)">next: <span style="color:var(--fg2,#a9b1d6)">Kernel Panic · Zirkon</span></span>
+            <span style="color:var(--mute,#565f89)">vol 40</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div>
+  <p style="margin:0;font:12px/1.5 'IBM Plex Sans',sans-serif;color:#7d86ab">Try next: "<a href="#2b" style="color:#c0caf5;text-decoration:none;background:#24283b;padding:2px 6px;font:600 10.5px 'JetBrains Mono',monospace">2b</a> with a SID / chip variant (3 channels, register view)" · "add a compact bar widget for the Quickshell panel" · "show <a href="#2a" style="color:#c0caf5;text-decoration:none;background:#24283b;padding:2px 6px;font:600 10.5px 'JetBrains Mono',monospace">2a</a> filtered to Amiga MOD with a party/year facet"</p>
+</section>
+<section id="t1" style="padding:36px 40px 40px;display:flex;flex-direction:column;gap:22px">
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:880px">
+    <div style="display:flex;align-items:baseline;gap:10px"><a href="#t1" style="font:600 10px 'JetBrains Mono',monospace;padding:3px 7px;background:#c0caf5;color:#1a1b26;text-decoration:none">1</a><span style="font:600 13px 'IBM Plex Sans',sans-serif;color:#c0caf5">Retrovert · full-window player · three directions</span></div>
+    <p style="margin:0;font:12px/1.6 'IBM Plex Sans',sans-serif;color:#7d86ab;text-wrap:pretty">Assumptions: Retrovert runs as a tiled Hyprland window under Omarchy, so each mock sits inside the Omarchy shell (thin top bar, 2px accent border, zero rounding, 10px outer gaps, mono type). Colors are the theme palette Omarchy already hands to apps (background, foreground, accent, color0–15) so a Quickshell build can read them straight from the theme. Use the Tweaks panel to preview the same mocks under Tokyo Night, Catppuccin, Gruvbox, Nord or Rosé Pine. Album art is placeholder.</p>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start">
+
+  <!-- 1a -->
+  <div id="1a" style="display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px">
+    <div style="display:flex;align-items:baseline;gap:8px;font:11px 'IBM Plex Sans',sans-serif;color:#7d86ab"><a href="#1a" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:#24283b;color:#c0caf5;text-decoration:none">1a</a>Three-pane · library / tracks / queue, transport bar at the bottom</div>
+    <div style="width:1440px;height:900px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 30% 20%,#1c2140 0%,#0b0b12 60%);--bg:{{ t.bg }};--bg2:{{ t.bg2 }};--bg3:{{ t.bg3 }};--fg:{{ t.fg }};--fg2:{{ t.fg2 }};--mute:{{ t.mute }};--line:{{ t.line }};--accent:{{ t.accent }};--accent2:{{ t.accent2 }};--green:{{ t.green }};--red:{{ t.red }};--yellow:{{ t.yellow }}">
+      <sc-if value="{{ showBar }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;left:0;right:0;top:0;height:26px;background:var(--bg,#1a1b26);display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:12px;color:var(--fg2,#a9b1d6)">
+        <div style="display:flex;gap:10px"><span style="color:var(--accent,#7aa2f7);font-weight:600">1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
+        <div style="color:var(--fg,#c0caf5)">retrovert</div>
+        <div style="display:flex;gap:14px"><span>wifi</span><span>vol 40%</span><span>bat 87%</span><span style="color:var(--fg,#c0caf5)">Sat 13 Sep 14:32</span></div>
+      </div>
+      </sc-if>
+      <div style="position:absolute;left:10px;right:10px;top:36px;bottom:10px;border:2px solid var(--accent,#7aa2f7);background:var(--bg,#1a1b26);display:grid;grid-template-columns:220px minmax(0,1fr) 300px;grid-template-rows:minmax(0,1fr) 84px;font-family:'IBM Plex Sans',sans-serif;color:var(--fg,#c0caf5)">
+        <!-- sidebar -->
+        <div style="border-right:1px solid var(--line,#292e42);background:var(--bg2,#16161e);padding:18px 0;display:flex;flex-direction:column;gap:22px">
+          <div style="padding:0 18px;font:600 12px 'JetBrains Mono',monospace;letter-spacing:.18em;color:var(--fg,#c0caf5)">RETROVERT</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="padding:0 18px 6px;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--mute,#565f89)">LIBRARY</div>
+            <sc-for list="{{ navLib }}" as="n" hint-placeholder-count="4">
+              <div style="display:flex;justify-content:space-between;padding:7px 18px;font-size:13px;color:{{ n.color }};background:{{ n.bg }};border-left:2px solid {{ n.border }}"><span>{{ n.label }}</span><span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ n.count }}</span></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="padding:0 18px 6px;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--mute,#565f89)">PLAYLISTS</div>
+            <sc-for list="{{ playlists }}" as="p" hint-placeholder-count="3">
+              <div style="display:flex;justify-content:space-between;padding:7px 18px;font-size:13px;color:var(--fg2,#a9b1d6);border-left:2px solid transparent"><span>{{ p.name }}</span><span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ p.count }}</span></div>
+            </sc-for>
+          </div>
+          <div style="margin-top:auto;padding:0 18px;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89);display:flex;flex-direction:column;gap:4px"><span>~/Music · 1,284 songs</span><span>mpd 0.24 · flac 96k</span></div>
+        </div>
+        <!-- center -->
+        <div style="display:flex;flex-direction:column;min-width:0">
+          <div style="display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--line,#292e42)">
+            <div style="flex:1;display:flex;align-items:center;gap:10px;height:34px;padding:0 12px;border:1px solid var(--line,#292e42);background:var(--bg2,#16161e);font:12px 'JetBrains Mono',monospace;color:var(--mute,#565f89)"><span style="color:var(--fg2,#a9b1d6)">/</span><span>search songs, albums, artists</span></div>
+            <div style="display:flex;gap:6px;font:11px 'JetBrains Mono',monospace">
+              <span style="padding:6px 10px;background:var(--bg3,#24283b);color:var(--fg,#c0caf5)">Recent</span><span style="padding:6px 10px;color:var(--fg2,#a9b1d6)">A–Z</span><span style="padding:6px 10px;color:var(--fg2,#a9b1d6)">Most played</span>
+            </div>
+          </div>
+          <div style="padding:20px 22px 8px;display:flex;flex-direction:column;gap:14px">
+            <div style="font:500 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--mute,#565f89)">RECENTLY ADDED</div>
+            <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px">
+              <sc-for list="{{ albums }}" as="a" hint-placeholder-count="6">
+                <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+                  <div style="aspect-ratio:1;background:repeating-linear-gradient(135deg,var(--bg3,#24283b) 0 6px,var(--bg2,#16161e) 6px 12px);border:1px solid var(--line,#292e42);display:flex;align-items:flex-end;padding:8px;font:10px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">cover</div>
+                  <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.title }}</div>
+                  <div style="font-size:11px;color:var(--mute,#565f89);margin-top:-5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.artist }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="padding:18px 22px 0;display:flex;flex-direction:column;min-height:0">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px"><span style="font:500 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--mute,#565f89)">SONGS</span><span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">1,284 · 3d 14h</span></div>
+            <div style="display:grid;grid-template-columns:32px minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.4fr) 52px;gap:0 14px;padding:6px 10px;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.1em;color:var(--mute,#565f89);border-bottom:1px solid var(--line,#292e42)"><span>#</span><span>TITLE</span><span>ARTIST</span><span>ALBUM</span><span style="text-align:right">TIME</span></div>
+            <sc-for list="{{ tracks }}" as="r" hint-placeholder-count="10">
+              <div style="display:grid;grid-template-columns:32px minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.4fr) 52px;gap:0 14px;align-items:center;padding:0 10px;height:34px;font-size:13px;color:{{ r.color }};background:{{ r.bg }}" style-hover="background:var(--bg3,#24283b)">
+                <span style="font:11px 'JetBrains Mono',monospace;color:{{ r.numColor }}">{{ r.num }}</span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:{{ r.weight }}">{{ r.title }}</span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg2,#a9b1d6)">{{ r.artist }}</span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mute,#565f89)">{{ r.album }}</span>
+                <span style="text-align:right;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ r.dur }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <!-- queue -->
+        <div style="border-left:1px solid var(--line,#292e42);background:var(--bg2,#16161e);display:flex;flex-direction:column;min-height:0">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;padding:18px 18px 10px"><span style="font:500 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--mute,#565f89)">QUEUE</span><span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">8 · 31:04</span></div>
+          <sc-for list="{{ queue }}" as="q" hint-placeholder-count="8">
+            <div style="display:flex;gap:12px;align-items:center;padding:8px 18px;background:{{ q.bg }};border-left:2px solid {{ q.border }}">
+              <div style="width:36px;height:36px;flex:none;background:repeating-linear-gradient(135deg,var(--bg3,#24283b) 0 4px,var(--bg,#1a1b26) 4px 8px);border:1px solid var(--line,#292e42)"></div>
+              <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:12.5px;font-weight:500;color:{{ q.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ q.title }}</span><span style="font-size:11px;color:var(--mute,#565f89);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ q.artist }}</span></div>
+              <span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ q.dur }}</span>
+            </div>
+          </sc-for>
+          <div style="margin-top:auto;padding:14px 18px;border-top:1px solid var(--line,#292e42);display:flex;justify-content:space-between;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)"><span>up next from: Late shift</span><span style="color:var(--fg2,#a9b1d6)">clear</span></div>
+        </div>
+        <!-- transport -->
+        <div style="grid-column:1 / -1;border-top:1px solid var(--line,#292e42);background:var(--bg2,#16161e);display:grid;grid-template-columns:300px minmax(0,1fr) 300px;align-items:center;padding:0 18px;gap:20px;position:relative">
+          <div style="position:absolute;left:0;right:0;top:-1px;height:2px;background:var(--line,#292e42)"><div style="height:100%;background:var(--accent,#7aa2f7);width:{{ progressPct }}"></div></div>
+          <div style="display:flex;gap:12px;align-items:center;min-width:0">
+            <div style="width:52px;height:52px;flex:none;background:repeating-linear-gradient(135deg,var(--bg3,#24283b) 0 5px,var(--bg,#1a1b26) 5px 10px);border:1px solid var(--line,#292e42)"></div>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Glass Corridors</span><span style="font-size:12px;color:var(--fg2,#a9b1d6)">Nadia Ferrant · Signal Rooms</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+            <div style="display:flex;align-items:center;gap:22px;font:14px 'JetBrains Mono',monospace;color:var(--fg2,#a9b1d6)">
+              <span style="font-size:12px;color:var(--mute,#565f89)">⇄</span><span>◀◀</span>
+              <span style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:var(--fg,#c0caf5);color:var(--bg,#1a1b26);font-size:12px">❚❚</span>
+              <span>▶▶</span><span style="font-size:12px;color:var(--mute,#565f89)">↻</span>
+            </div>
+            <div style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)"><span style="color:var(--fg2,#a9b1d6)">{{ elapsed }}</span> / 4:12</div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;align-items:center;gap:16px;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">
+            <span style="padding:3px 6px;border:1px solid var(--line,#292e42);color:var(--fg2,#a9b1d6)">FLAC 24/96</span>
+            <span>vol</span>
+            <div style="width:100px;height:2px;background:var(--line,#292e42)"><div style="width:40%;height:100%;background:var(--fg2,#a9b1d6)"></div></div>
+            <span style="color:var(--fg2,#a9b1d6)">40</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1b -->
+  <div id="1b" style="display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px">
+    <div style="display:flex;align-items:baseline;gap:8px;font:11px 'IBM Plex Sans',sans-serif;color:#7d86ab"><a href="#1b" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:#24283b;color:#c0caf5;text-decoration:none">1b</a>Terminal · all-mono, keyboard-first, vim keys, status line and command prompt</div>
+    <div style="width:1440px;height:900px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 70% 80%,#1c2140 0%,#0b0b12 60%);--bg:{{ t.bg }};--bg2:{{ t.bg2 }};--bg3:{{ t.bg3 }};--fg:{{ t.fg }};--fg2:{{ t.fg2 }};--mute:{{ t.mute }};--line:{{ t.line }};--accent:{{ t.accent }};--accent2:{{ t.accent2 }};--green:{{ t.green }};--red:{{ t.red }};--yellow:{{ t.yellow }}">
+      <sc-if value="{{ showBar }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;left:0;right:0;top:0;height:26px;background:var(--bg,#1a1b26);display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:12px;color:var(--fg2,#a9b1d6)">
+        <div style="display:flex;gap:10px"><span>1</span><span style="color:var(--accent,#7aa2f7);font-weight:600">2</span><span>3</span><span>4</span><span>5</span></div>
+        <div style="color:var(--fg,#c0caf5)">retrovert</div>
+        <div style="display:flex;gap:14px"><span>wifi</span><span>vol 40%</span><span>bat 87%</span><span style="color:var(--fg,#c0caf5)">Sat 13 Sep 14:32</span></div>
+      </div>
+      </sc-if>
+      <div style="position:absolute;left:10px;right:10px;top:36px;bottom:10px;border:2px solid var(--accent,#7aa2f7);background:var(--bg,#1a1b26);display:grid;grid-template-rows:30px minmax(0,1fr) 30px;font:13px/1.5 'JetBrains Mono',monospace;color:var(--fg,#c0caf5)">
+        <div style="display:flex;align-items:center;gap:0;background:var(--bg2,#16161e);border-bottom:1px solid var(--line,#292e42);font-size:12px">
+          <span style="padding:0 14px;height:100%;display:flex;align-items:center;background:var(--accent,#7aa2f7);color:var(--bg,#1a1b26);font-weight:600">RETROVERT</span>
+          <span style="padding:0 14px;color:var(--fg,#c0caf5);background:var(--bg3,#24283b);height:100%;display:flex;align-items:center">1:songs</span>
+          <span style="padding:0 14px;color:var(--mute,#565f89)">2:albums</span><span style="padding:0 14px;color:var(--mute,#565f89)">3:artists</span><span style="padding:0 14px;color:var(--mute,#565f89)">4:playlists</span>
+          <span style="margin-left:auto;padding:0 14px;color:var(--mute,#565f89)">filter: <span style="color:var(--yellow,#e0af68)">artist:ferrant</span></span>
+          <span style="padding:0 14px;color:var(--mute,#565f89);border-left:1px solid var(--line,#292e42)">1,284 songs · 212 artists · 96 albums</span>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 420px;min-height:0">
+          <div style="display:flex;flex-direction:column;padding:10px 0;min-width:0">
+            <div style="display:grid;grid-template-columns:20px 36px minmax(0,2fr) minmax(0,1.3fr) minmax(0,1.3fr) 60px 50px;gap:0 12px;padding:0 16px 6px;color:var(--mute,#565f89);font-size:11px;letter-spacing:.08em"><span></span><span>#</span><span>TITLE</span><span>ARTIST</span><span>ALBUM</span><span style="text-align:right">PLAYS</span><span style="text-align:right">TIME</span></div>
+            <sc-for list="{{ tracksB }}" as="r" hint-placeholder-count="18">
+              <div style="display:grid;grid-template-columns:20px 36px minmax(0,2fr) minmax(0,1.3fr) minmax(0,1.3fr) 60px 50px;gap:0 12px;padding:0 16px;height:26px;align-items:center;color:{{ r.color }};background:{{ r.bg }}">
+                <span style="color:var(--accent,#7aa2f7)">{{ r.cursor }}</span><span style="color:{{ r.numColor }}">{{ r.num }}</span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.title }}</span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg2,#a9b1d6)">{{ r.artist }}</span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mute,#565f89)">{{ r.album }}</span>
+                <span style="text-align:right;color:var(--mute,#565f89)">{{ r.plays }}</span>
+                <span style="text-align:right;color:var(--mute,#565f89)">{{ r.dur }}</span>
+              </div>
+            </sc-for>
+            <div style="margin-top:auto;padding:8px 16px 0;color:var(--mute,#565f89);font-size:11px;display:flex;gap:18px"><span><b style="color:var(--fg2,#a9b1d6);font-weight:500">j/k</b> move</span><span><b style="color:var(--fg2,#a9b1d6);font-weight:500">enter</b> play</span><span><b style="color:var(--fg2,#a9b1d6);font-weight:500">a</b> queue</span><span><b style="color:var(--fg2,#a9b1d6);font-weight:500">A</b> play next</span><span><b style="color:var(--fg2,#a9b1d6);font-weight:500">/</b> search</span><span><b style="color:var(--fg2,#a9b1d6);font-weight:500">tab</b> queue pane</span><span><b style="color:var(--fg2,#a9b1d6);font-weight:500">?</b> help</span></div>
+          </div>
+          <div style="border-left:1px solid var(--line,#292e42);background:var(--bg2,#16161e);display:flex;flex-direction:column;min-height:0">
+            <div style="padding:16px 18px 0;display:flex;flex-direction:column;gap:12px">
+              <div style="color:var(--mute,#565f89);font-size:11px;letter-spacing:.08em">NOW PLAYING</div>
+              <div style="display:flex;gap:14px">
+                <div style="width:120px;height:120px;flex:none;background:repeating-linear-gradient(135deg,var(--bg3,#24283b) 0 6px,var(--bg,#1a1b26) 6px 12px);border:1px solid var(--line,#292e42);display:flex;align-items:flex-end;padding:6px;font-size:10px;color:var(--mute,#565f89)">cover</div>
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;font-size:12px">
+                  <span style="color:var(--fg,#c0caf5);font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Glass Corridors</span>
+                  <span style="color:var(--fg2,#a9b1d6)">Nadia Ferrant</span>
+                  <span style="color:var(--mute,#565f89)">Signal Rooms · 2024</span>
+                  <span style="color:var(--mute,#565f89);margin-top:auto">flac 24/96 · 2,114 kbps</span>
+                  <span style="color:var(--green,#9ece6a)">▶ playing</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px;font-size:12px">
+                <div style="display:flex;gap:0;white-space:nowrap;overflow:hidden;letter-spacing:-.02em"><span style="color:var(--accent,#7aa2f7)">{{ barFill }}</span><span style="color:var(--line,#292e42)">{{ barRest }}</span></div>
+                <div style="display:flex;justify-content:space-between;color:var(--mute,#565f89)"><span style="color:var(--fg2,#a9b1d6)">{{ elapsed }}</span><span>◀◀ &nbsp;❚❚&nbsp; ▶▶ &nbsp;&nbsp;⇄ ↻ &nbsp;&nbsp;vol 40</span><span>4:12</span></div>
+              </div>
+            </div>
+            <div style="padding:18px 18px 6px;display:flex;justify-content:space-between;color:var(--mute,#565f89);font-size:11px;letter-spacing:.08em"><span>QUEUE</span><span>8 · 31:04</span></div>
+            <sc-for list="{{ queueB }}" as="q" hint-placeholder-count="8">
+              <div style="display:grid;grid-template-columns:16px minmax(0,1fr) 44px;gap:0 10px;padding:0 18px;height:24px;align-items:center;font-size:12px;color:{{ q.color }};background:{{ q.bg }}">
+                <span style="color:var(--accent,#7aa2f7)">{{ q.mark }}</span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ q.title }} <span style="color:var(--mute,#565f89)">— {{ q.artist }}</span></span>
+                <span style="text-align:right;color:var(--mute,#565f89)">{{ q.dur }}</span>
+              </div>
+            </sc-for>
+            <div style="margin-top:auto;padding:12px 18px;border-top:1px solid var(--line,#292e42);font-size:11px;color:var(--mute,#565f89)">mpd · localhost:6600 · connected</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--bg2,#16161e);border-top:1px solid var(--line,#292e42);font-size:12px">
+          <span style="color:var(--accent,#7aa2f7)">:</span><span style="color:var(--fg,#c0caf5)">queue add album "Signal Rooms"</span><span style="width:7px;height:14px;background:var(--fg,#c0caf5)"></span>
+          <span style="margin-left:auto;color:var(--mute,#565f89)">NORMAL</span><span style="color:var(--mute,#565f89)">12/1284</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1c -->
+  <div id="1c" style="display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px">
+    <div style="display:flex;align-items:baseline;gap:8px;font:11px 'IBM Plex Sans',sans-serif;color:#7d86ab"><a href="#1c" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:#24283b;color:#c0caf5;text-decoration:none">1c</a>Stage · now-playing in the middle, library and queue as quiet side rails, walker-style search</div>
+    <div style="width:1440px;height:900px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 0%,#1c2140 0%,#0b0b12 60%);--bg:{{ t.bg }};--bg2:{{ t.bg2 }};--bg3:{{ t.bg3 }};--fg:{{ t.fg }};--fg2:{{ t.fg2 }};--mute:{{ t.mute }};--line:{{ t.line }};--accent:{{ t.accent }};--accent2:{{ t.accent2 }};--green:{{ t.green }};--red:{{ t.red }};--yellow:{{ t.yellow }}">
+      <sc-if value="{{ showBar }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;left:0;right:0;top:0;height:26px;background:var(--bg,#1a1b26);display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:12px;color:var(--fg2,#a9b1d6)">
+        <div style="display:flex;gap:10px"><span>1</span><span>2</span><span style="color:var(--accent,#7aa2f7);font-weight:600">3</span><span>4</span><span>5</span></div>
+        <div style="color:var(--fg,#c0caf5)">retrovert</div>
+        <div style="display:flex;gap:14px"><span>wifi</span><span>vol 40%</span><span>bat 87%</span><span style="color:var(--fg,#c0caf5)">Sat 13 Sep 14:32</span></div>
+      </div>
+      </sc-if>
+      <div style="position:absolute;left:10px;right:10px;top:36px;bottom:10px;border:2px solid var(--accent,#7aa2f7);background:var(--bg,#1a1b26);display:grid;grid-template-columns:320px minmax(0,1fr) 320px;font-family:'IBM Plex Sans',sans-serif;color:var(--fg,#c0caf5);overflow:hidden">
+        <!-- library rail -->
+        <div style="border-right:1px solid var(--line,#292e42);display:flex;flex-direction:column;min-height:0;background:var(--bg2,#16161e)">
+          <div style="padding:18px 18px 12px;display:flex;justify-content:space-between;align-items:baseline"><span style="font:600 12px 'JetBrains Mono',monospace;letter-spacing:.18em">RETROVERT</span><span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">library</span></div>
+          <div style="display:flex;gap:4px;padding:0 18px 12px;font:11px 'JetBrains Mono',monospace"><span style="padding:4px 8px;background:var(--bg3,#24283b)">albums</span><span style="padding:4px 8px;color:var(--mute,#565f89)">artists</span><span style="padding:4px 8px;color:var(--mute,#565f89)">songs</span><span style="padding:4px 8px;color:var(--mute,#565f89)">lists</span></div>
+          <sc-for list="{{ albumsC }}" as="a" hint-placeholder-count="10">
+            <div style="display:flex;gap:12px;align-items:center;padding:7px 18px;background:{{ a.bg }};border-left:2px solid {{ a.border }}">
+              <div style="width:40px;height:40px;flex:none;background:repeating-linear-gradient(135deg,var(--bg3,#24283b) 0 4px,var(--bg,#1a1b26) 4px 8px);border:1px solid var(--line,#292e42)"></div>
+              <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ a.color }}">{{ a.title }}</span><span style="font-size:11px;color:var(--mute,#565f89)">{{ a.artist }} · {{ a.year }}</span></div>
+              <span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ a.n }}</span>
+            </div>
+          </sc-for>
+          <div style="margin-top:auto;padding:12px 18px;border-top:1px solid var(--line,#292e42);font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">96 albums · sorted by added</div>
+        </div>
+        <!-- stage -->
+        <div style="position:relative;display:flex;flex-direction:column;align-items:center;min-width:0">
+          <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 42%,color-mix(in oklch,var(--accent,#7aa2f7) 18%,transparent) 0%,transparent 55%);pointer-events:none"></div>
+          <div style="position:relative;margin-top:18px;width:520px;height:36px;display:flex;align-items:center;gap:10px;padding:0 12px;border:1px solid var(--line,#292e42);background:var(--bg2,#16161e);font:12px 'JetBrains Mono',monospace;color:var(--mute,#565f89)"><span style="color:var(--fg2,#a9b1d6)">›</span><span>search library</span><span style="margin-left:auto;padding:2px 6px;border:1px solid var(--line,#292e42);font-size:10px">super k</span></div>
+          <div style="position:relative;margin-top:46px;width:360px;height:360px;background:repeating-linear-gradient(135deg,var(--bg3,#24283b) 0 8px,var(--bg2,#16161e) 8px 16px);border:1px solid var(--line,#292e42);box-shadow:0 30px 80px -20px rgba(0,0,0,.8);display:flex;align-items:flex-end;padding:12px;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">album cover · 360×360</div>
+          <div style="position:relative;margin-top:30px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
+            <span style="font-size:24px;font-weight:600;letter-spacing:-.01em">Glass Corridors</span>
+            <span style="font-size:14px;color:var(--fg2,#a9b1d6)">Nadia Ferrant — Signal Rooms</span>
+          </div>
+          <div style="position:relative;margin-top:28px;width:560px;display:flex;flex-direction:column;gap:8px">
+            <div style="height:3px;background:var(--line,#292e42)"><div style="height:100%;background:var(--accent,#7aa2f7);width:{{ progressPct }}"></div></div>
+            <div style="display:flex;justify-content:space-between;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)"><span style="color:var(--fg2,#a9b1d6)">{{ elapsed }}</span><span>4:12</span></div>
+          </div>
+          <div style="position:relative;margin-top:18px;display:flex;align-items:center;gap:26px;font:15px 'JetBrains Mono',monospace;color:var(--fg2,#a9b1d6)">
+            <span style="font-size:12px;color:var(--mute,#565f89)">⇄</span><span>◀◀</span>
+            <span style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:var(--accent,#7aa2f7);color:var(--bg,#1a1b26);font-size:13px">❚❚</span>
+            <span>▶▶</span><span style="font-size:12px;color:var(--accent,#7aa2f7)">↻</span>
+          </div>
+          <div style="position:relative;margin-top:auto;margin-bottom:16px;display:flex;gap:18px;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)"><span>flac 24/96</span><span>·</span><span>output: hw:USB DAC</span><span>·</span><span>vol 40</span></div>
+        </div>
+        <!-- queue rail -->
+        <div style="border-left:1px solid var(--line,#292e42);background:var(--bg2,#16161e);display:flex;flex-direction:column;min-height:0">
+          <div style="padding:18px 18px 12px;display:flex;justify-content:space-between;align-items:baseline"><span style="font:500 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--mute,#565f89)">UP NEXT</span><span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">7 · 26:52</span></div>
+          <sc-for list="{{ queueC }}" as="q" hint-placeholder-count="7">
+            <div style="display:grid;grid-template-columns:22px minmax(0,1fr) 40px;gap:0 10px;align-items:center;padding:9px 18px">
+              <span style="font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ q.n }}</span>
+              <div style="min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ q.title }}</span><span style="font-size:11px;color:var(--mute,#565f89)">{{ q.artist }}</span></div>
+              <span style="text-align:right;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)">{{ q.dur }}</span>
+            </div>
+          </sc-for>
+          <div style="margin:14px 18px 0;padding:12px;border:1px dashed var(--line,#292e42);font:11px/1.5 'JetBrains Mono',monospace;color:var(--mute,#565f89)">then: continue with similar from Signal Rooms</div>
+          <div style="margin-top:auto;padding:12px 18px;border-top:1px solid var(--line,#292e42);display:flex;justify-content:space-between;font:11px 'JetBrains Mono',monospace;color:var(--mute,#565f89)"><span>history</span><span style="color:var(--fg2,#a9b1d6)">clear queue</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div>
+  <p style="margin:0;font:12px/1.5 'IBM Plex Sans',sans-serif;color:#7d86ab">Try next: "<a href="#1b" style="color:#c0caf5;text-decoration:none;background:#24283b;padding:2px 6px;font:600 10.5px 'JetBrains Mono',monospace">1b</a> but with album art in the list" · "add a collapsed bar-widget state for <a href="#1c" style="color:#c0caf5;text-decoration:none;background:#24283b;padding:2px 6px;font:600 10.5px 'JetBrains Mono',monospace">1c</a>" · "show the search overlay open"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Tokyo Night&quot;,&quot;options&quot;:[&quot;Tokyo Night&quot;,&quot;Catppuccin&quot;,&quot;Gruvbox&quot;,&quot;Nord&quot;,&quot;Rosé Pine&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Omarchy theme&quot;},&quot;showBar&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Shell&quot;}}">
+class Component extends DCLogic {
+  state = { sec: 97, tick: 0 };
+  componentDidMount() {
+    this.t = setInterval(() => this.setState(s => ({ sec: (s.sec + 1) % 252 })), 1000);
+    this.t2 = setInterval(() => this.setState(s => ({ tick: s.tick + 1 })), 180);
+  }
+  componentWillUnmount() { clearInterval(this.t); clearInterval(this.t2); }
+  demoVals(t, sec) {
+    const tick = this.state.tick, CH = 16, ROWS = 64;
+    const rnd = (a, b) => { let x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); };
+    const notes = ['C-','C#','D-','D#','E-','F-','F#','G-','G#','A-','A#','B-'];
+    const rowNow = tick % ROWS, ordN = Math.floor(tick / ROWS) % 52;
+    const hex = n => n.toString(16).toUpperCase().padStart(2,'0');
+    const cell = (r, c) => {
+      const v = rnd(r + ordN * 64, c);
+      if (v < 0.62) return { note:'···', ins:'··', noteColor:'var(--line)' };
+      if (v < 0.66) return { note:'^^^', ins:'··', noteColor:'var(--mute)' };
+      const n = Math.floor(rnd(r*3, c*7) * 12), oct = 3 + Math.floor(rnd(r, c*2) * 3);
+      return { note: notes[n] + oct, ins: hex(1 + Math.floor(rnd(c, r) * 24)), noteColor:'var(--fg)' };
+    };
+    const patRows = [];
+    for (let d = -10; d <= 10; d++) {
+      const r = rowNow + d;
+      const inRange = r >= 0 && r < ROWS;
+      patRows.push({ n: inRange ? hex(r) : '', cells: inRange ? Array.from({length:CH}, (_, c) => cell(r, c)) : Array.from({length:CH}, () => ({ note:'', ins:'', noteColor:'transparent' })),
+        color: d === 0 ? 'var(--fg)' : 'var(--fg2)', opacity: d === 0 ? 1 : Math.max(0.25, 1 - Math.abs(d) * 0.075) });
+    }
+    const orders = Array.from({length:20}, (_, i) => ({ idx: hex(i), pat: hex((i * 7 + 3) % 38), color: i === ordN % 20 ? 'var(--accent)' : 'var(--fg2)', bg: i === ordN % 20 ? 'var(--bg3)' : 'transparent' }));
+    const scopes = Array.from({length:CH}, (_, c) => {
+      const active = rnd(rowNow, c) > 0.3, f = 1 + (c % 5), amp = active ? 6 + rnd(c, 1) * 10 : 0.8, ph = tick * 0.6 + c;
+      const pts = []; for (let i = 0; i <= 50; i++) { const x = i * 2, y = 20 + amp * Math.sin(i / 50 * Math.PI * 2 * f + ph) * (c % 3 === 0 ? Math.sign(Math.sin(i * 0.9 + ph)) : 1); pts.push(`${x},${y.toFixed(1)}`); }
+      return { n: hex(c + 1), points: pts.join(' ') };
+    });
+    const vu = Array.from({length:16}, (_, c) => (rnd(rowNow, c) > 0.3 ? (0.35 + rnd(tick, c) * 0.65).toFixed(2) : '0.08'));
+    const mods = [
+      ['Neon Overdrive','Kaleido','Rift Crew','XM',8,1997,'3:48'],['Copper Bars Forever','mnemo','Voxelheart','MOD',4,1992,'2:56'],['Phosphor Dreams','Tesseract','Pulsewidth','IT',16,1999,'4:12'],
+      ['Kernel Panic','Zirkon','Static Union','XM',12,2001,'3:31'],['Raster Interrupt','Laserdanz','Cathode Kids','SID',3,1989,'5:10'],['Sprite Multiplexer','Ophelia B.','Voxelheart','SID',3,1991,'3:19'],
+      ['Blast Processing','Kaleido','Rift Crew','VGM',6,1994,'2:44'],['Mode 7 Sunset','Tesseract','—','SPC',8,1995,'4:01'],['Hardsync','Laserdanz','Cathode Kids','AHX',4,1996,'3:07'],
+      ['Bitplane Blues','mnemo','Voxelheart','MOD',4,1993,'3:55'],['Scanline Lovers','Zirkon','Static Union','XM',8,2003,'4:28'],['Fastloader','Ophelia B.','Cathode Kids','SID',3,1990,'2:48'],
+      ['Wavetable Rain','Tesseract','Pulsewidth','IT',24,2004,'6:03'],['Trainer Menu','Kaleido','Rift Crew','MOD',4,1991,'1:52'],['Attract Mode','Zirkon','—','NSF',5,1988,'2:20'],['Party Coder Anthem','mnemo','Voxelheart','XM',10,1998,'4:36']
+    ];
+    const fmtColor = { MOD:'var(--accent2)', XM:'var(--accent)', IT:'var(--green)', SID:'var(--yellow)', SPC:'var(--red)', VGM:'var(--red)', AHX:'var(--accent2)', NSF:'var(--red)' };
+    const modsA = mods.map((m, i) => ({ num: i === 2 ? '▶' : String(i+1).padStart(2,'0'), title:m[0], composer:m[1], group:m[2], fmt:m[3], ch:String(m[4]), year:String(m[5]), dur:m[6], fmtColor: fmtColor[m[3]],
+      color: i === 2 ? 'var(--accent)' : 'var(--fg)', numColor: i === 2 ? 'var(--accent)' : 'var(--mute)', weight: i === 2 ? 600 : 400, bg: i === 2 ? 'var(--bg3)' : 'transparent' }));
+    const queueMods = [3,4,6,7,8,10,12].map(i => ({ fmt: mods[i][3], title: mods[i][0], composer: mods[i][1], dur: mods[i][6] }));
+    const sampleNames = ['01 kick_909_tight','02 snare_reverse','03 hat_closed','04 bass_saw_dt','05 pad_glass_c4','06 lead_pwm','07 choir_ahh_c3','08 arp_square','09 crash_long','10 tom_lo','11 tom_hi','12 clap_layer','13 string_ens','14 fx_riser','15 bell_fm','16 noise_wash'];
+    const samples = sampleNames.slice(0, 9);
+    const samplesB = sampleNames.map((s, i) => ({ text: s, color: rnd(rowNow, i) > 0.5 ? 'var(--fg)' : 'var(--mute)' }));
+    const navFmt = [['All formats','4,812'],['Amiga MOD','1,406'],['XM · FT2','1,122'],['IT · S3M','684'],['SID · C64','912'],['SPC · VGM · NSF','571'],['AHX · YM · other','117']].map((n, i) => ({ label:n[0], count:n[1], color: i === 0 ? 'var(--fg)' : 'var(--fg2)', bg: i === 0 ? 'var(--bg3)' : 'transparent', border: i === 0 ? 'var(--accent)' : 'transparent' }));
+    const collections = [['Party releases 2025','84'],['Keygen bangers','132'],['Game rips','640'],['Modland mirror','2,911']].map(p => ({ name:p[0], count:p[1] }));
+    return { patRows, orders, scopes, vu, modsA, queueMods, samples, samplesB, navFmt, collections, ord: hex(ordN), pat: hex((ordN * 7 + 3) % 38), rowHex: hex(rowNow) };
+  }
+  renderVals() {
+    const themes = {
+      'Tokyo Night': { bg:'#1a1b26', bg2:'#16161e', bg3:'#24283b', fg:'#c0caf5', fg2:'#a9b1d6', mute:'#565f89', line:'#292e42', accent:'#7aa2f7', accent2:'#bb9af7', green:'#9ece6a', red:'#f7768e', yellow:'#e0af68' },
+      'Catppuccin': { bg:'#1e1e2e', bg2:'#181825', bg3:'#313244', fg:'#cdd6f4', fg2:'#a6adc8', mute:'#6c7086', line:'#313244', accent:'#89b4fa', accent2:'#cba6f7', green:'#a6e3a1', red:'#f38ba8', yellow:'#f9e2af' },
+      'Gruvbox': { bg:'#282828', bg2:'#1d2021', bg3:'#3c3836', fg:'#ebdbb2', fg2:'#bdae93', mute:'#7c6f64', line:'#3c3836', accent:'#fabd2f', accent2:'#d3869b', green:'#b8bb26', red:'#fb4934', yellow:'#fabd2f' },
+      'Nord': { bg:'#2e3440', bg2:'#272c36', bg3:'#3b4252', fg:'#eceff4', fg2:'#d8dee9', mute:'#7b88a1', line:'#3b4252', accent:'#88c0d0', accent2:'#b48ead', green:'#a3be8c', red:'#bf616a', yellow:'#ebcb8b' },
+      'Rosé Pine': { bg:'#191724', bg2:'#1f1d2e', bg3:'#26233a', fg:'#e0def4', fg2:'#908caa', mute:'#6e6a86', line:'#26233a', accent:'#c4a7e7', accent2:'#ebbcba', green:'#9ccfd8', red:'#eb6f92', yellow:'#f6c177' }
+    };
+    const t = themes[this.props.theme] || themes['Tokyo Night'];
+    const showBar = this.props.showBar ?? true;
+    const sec = this.state.sec, total = 252;
+    const elapsed = `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+    const progressPct = `${(sec/total*100).toFixed(1)}%`;
+    const cells = 44, filled = Math.round(sec/total*cells);
+    const barFill = '━'.repeat(filled) + '╸', barRest = '─'.repeat(cells - filled);
+
+    const NOW = 2;
+    const tracks = [
+      ['Low Tide Radio','Nadia Ferrant','Signal Rooms','3:48',41],['Paper Satellites','Nadia Ferrant','Signal Rooms','4:02',37],['Glass Corridors','Nadia Ferrant','Signal Rooms','4:12',58],
+      ['Midnight Freight','Orrin Vale','Slow Light','5:10',12],['Kettle Songs','The Amber Field','Hometape','2:56',22],['Ferrous','Mira Okonkwo','Terminal Bloom','3:31',9],
+      ['Coastal Hum','Orrin Vale','Slow Light','4:44',15],['Lantern Math','Hollow Prism','Debris Chorus','3:19',30],['Argon','Mira Okonkwo','Terminal Bloom','6:03',6],
+      ['Three Blue Doors','The Amber Field','Hometape','3:07',18],['Arcadia Exit','Hollow Prism','Debris Chorus','4:28',11],['Static Garden','Nadia Ferrant','Signal Rooms','3:55',27],
+      ['Overpass','Orrin Vale','Slow Light','4:01',8],['Salt Circuit','Mira Okonkwo','Terminal Bloom','3:40',14],['Night Shift Choir','The Amber Field','Hometape','5:22',5],
+      ['Tape Hiss Lullaby','Hollow Prism','Debris Chorus','2:48',19],['Antenna Blues','Nadia Ferrant','Signal Rooms','4:36',33],['Window Seat','Orrin Vale','Slow Light','3:12',7]
+    ];
+    const row = (r, i) => ({ num: String(i+1).padStart(2,'0'), title:r[0], artist:r[1], album:r[2], dur:r[3], plays:String(r[4]),
+      color: i===NOW ? 'var(--accent)' : 'var(--fg)', numColor: i===NOW ? 'var(--accent)' : 'var(--mute)', weight: i===NOW ? 600 : 400,
+      bg: i===NOW ? 'var(--bg3)' : 'transparent' });
+    const tracksA = tracks.slice(0,10).map(row);
+    tracksA[NOW].num = '▶';
+    const tracksB = tracks.map(row).map((r,i) => ({ ...r, cursor: i===11 ? '>' : '', bg: i===11 ? 'var(--bg3)' : 'transparent', color: i===NOW ? 'var(--accent)' : 'var(--fg)', num: i===NOW ? '▶' : r.num }));
+
+    const q = [['Glass Corridors','Nadia Ferrant','4:12'],['Midnight Freight','Orrin Vale','5:10'],['Kettle Songs','The Amber Field','2:56'],['Ferrous','Mira Okonkwo','3:31'],['Coastal Hum','Orrin Vale','4:44'],['Lantern Math','Hollow Prism','3:19'],['Argon','Mira Okonkwo','6:03'],['Three Blue Doors','The Amber Field','3:07']];
+    const queue = q.map((x,i) => ({ title:x[0], artist:x[1], dur:x[2], bg: i===0 ? 'var(--bg3)' : 'transparent', border: i===0 ? 'var(--accent)' : 'transparent', color: i===0 ? 'var(--accent)' : 'var(--fg)' }));
+    const queueB = q.map((x,i) => ({ title:x[0], artist:x[1], dur:x[2], mark: i===0 ? '▶' : '', bg:'transparent', color: i===0 ? 'var(--accent)' : 'var(--fg)' }));
+    const queueC = q.slice(1).map((x,i) => ({ n: String(i+1).padStart(2,'0'), title:x[0], artist:x[1], dur:x[2] }));
+
+    const alb = [['Signal Rooms','Nadia Ferrant',2024,12],['Slow Light','Orrin Vale',2023,9],['Hometape','The Amber Field',2025,10],['Terminal Bloom','Mira Okonkwo',2022,11],['Debris Chorus','Hollow Prism',2024,8],['Quiet Machines','Lena Oduya',2021,10],['Copper Weather','Sable Arcs',2020,9],['Harbour Lights','Orrin Vale',2019,12],['Blue Hour Tapes','The Amber Field',2022,7],['Drift Season','Lena Oduya',2025,11]];
+    const albums = alb.slice(0,6).map(a => ({ title:a[0], artist:a[1] }));
+    const albumsC = alb.map((a,i) => ({ title:a[0], artist:a[1], year:a[2], n:a[3], bg: i===0 ? 'var(--bg3)' : 'transparent', border: i===0 ? 'var(--accent)' : 'transparent', color: i===0 ? 'var(--accent)' : 'var(--fg)' }));
+
+    const navLib = [['Songs','1,284'],['Albums','96'],['Artists','212'],['Genres','18']].map((n,i) => ({ label:n[0], count:n[1], color: i===0 ? 'var(--fg)' : 'var(--fg2)', bg: i===0 ? 'var(--bg3)' : 'transparent', border: i===0 ? 'var(--accent)' : 'transparent' }));
+    const playlists = [['Late shift','42'],['Focus','28'],['2026 finds','63'],['Vinyl rips','17']].map(p => ({ name:p[0], count:p[1] }));
+
+    return { t, showBar, elapsed, progressPct, barFill, barRest, tracks: tracksA, tracksB, queue, queueB, queueC, albums, albumsC, navLib, playlists, ...this.demoVals(t, sec) };
+  }
+}
+</script>
+</body>
+</html>

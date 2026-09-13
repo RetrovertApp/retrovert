@@ -20,6 +20,9 @@ const PACKAGED_UI: &str = "/usr/share/retrovert/ui";
 const PACKAGED_QML: &str = "/usr/lib/retrovert/qml";
 const PACKAGED_PLUGINS: &str = "/usr/lib/retrovert/plugins";
 const DEV_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+/// Where a full `cmake --build build` of the sibling `playback_plugins` checkout puts every
+/// decoder, relative to this dev tree.
+const DEV_PLUGINS: &str = "../../playback_plugins/build/plugins";
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum Renderer {
@@ -70,7 +73,7 @@ fn main() {
         );
         std::process::exit(2);
     };
-    let plugins = resolve(args.plugins, PACKAGED_PLUGINS, "plugins", Path::is_dir)
+    let plugins = resolve(args.plugins, PACKAGED_PLUGINS, DEV_PLUGINS, Path::is_dir)
         .unwrap_or_else(|| PathBuf::from(PACKAGED_PLUGINS));
 
     let mut cmd = Command::new("qs");
