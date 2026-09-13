@@ -1,0 +1,14 @@
+[package]
+name = "retrovert-present"
+version.workspace = true
+repository.workspace = true
+edition = "2021"
+license = "MIT"
+publish = false
+description = "UI-agnostic presentation core: turns engine state into geometry any renderer can draw"
+
+[dependencies]
+retrovert-host.workspace = true
+
+[lints]
+workspace = true

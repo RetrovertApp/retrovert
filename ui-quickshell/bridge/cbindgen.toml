@@ -1,0 +1,17 @@
+language = "C"
+include_guard = "RETROVERT_UI_H"
+include_version = false
+cpp_compat = true
+documentation = true
+style = "both"
+
+[export]
+prefix = "Rv"
+include = ["ScopePoint", "State", "Status"]
+
+[enum]
+prefix_with_name = true
+
+[parse]
+parse_deps = true
+include = ["retrovert-present"]

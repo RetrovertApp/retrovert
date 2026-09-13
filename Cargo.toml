@@ -4,10 +4,13 @@ members = [
     "crates/catalog",
     "crates/desktop",
     "crates/player",
+    "crates/present",
     "crates/playlist",
     "crates/publish",
     "crates/tuf",
     "crates/updater",
+    "ui-quickshell/bridge",
+    "ui-quickshell/launcher",
 ]
 
 [workspace.package]
