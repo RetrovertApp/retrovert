@@ -112,9 +112,11 @@ jobs:
 
       - name: Refuse to publish backwards
         run: |
-          current=$(./target/release/retrovert-publish verify \
+          served=$(./target/release/retrovert-publish verify \
             "https://github.com/$CHANNEL_REPO/releases/download/$CHANNEL/channel-metadata/" \
-            "channels/$CHANNEL/root.json" | grep -oP '^release:\s+v\K[0-9]+')
+            "channels/$CHANNEL/root.json")
+          # A channel with no release yet prints "release:  none".
+          current=$(grep -oP '^release:\s+v\K[0-9]+' <<< "$served" || echo 0)
           echo "channel serves v$current, publishing v$VERSION"
           if [ "$VERSION" -le "$current" ]; then
             echo "::error::release-set v$VERSION is not newer than the published v$current"

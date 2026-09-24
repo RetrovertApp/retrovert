@@ -363,6 +363,10 @@ fn run_verify(args: &VerifyArgs) -> Result<()> {
 
     println!("channel:  {}", args.base_url);
     println!("root:     {}", args.root.display());
+    let Some(generation) = generation else {
+        println!("release:  none");
+        return Ok(());
+    };
     println!(
         "release:  v{} published {} (revision {})",
         generation.version, generation.published, generation.source_revision

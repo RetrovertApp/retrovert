@@ -68,7 +68,8 @@ fn a_pulled_workspace_resigns_into_a_channel_a_client_accepts() {
         BTreeMap::new(),
     );
     let generation = retrovert_publish::verify(live.base_url(), &read(&job, "root.json"), when)
-        .expect("the re-signed channel verifies from the root alone");
+        .expect("the re-signed channel verifies from the root alone")
+        .expect("the re-signed channel still names its generation");
 
     assert_eq!(generation.source_revision, "rev-1");
     assert_eq!(generation.version, 1);
@@ -97,8 +98,9 @@ fn a_pull_takes_the_generation_the_channel_names_now() {
         ],
         BTreeMap::new(),
     );
-    let generation =
-        retrovert_publish::verify(live.base_url(), &read(&job, "root.json"), now()).unwrap();
+    let generation = retrovert_publish::verify(live.base_url(), &read(&job, "root.json"), now())
+        .unwrap()
+        .expect("the channel names the second generation");
     assert_eq!(generation.source_revision, "rev-2");
 }
 

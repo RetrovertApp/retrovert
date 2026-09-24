@@ -92,7 +92,9 @@ fn a_published_channel_resolves_its_generation_over_http() {
     let server = serve_channel(&workspace);
 
     let root = std::fs::read(workspace.channel().metadata_dir().join("root.json")).unwrap();
-    let generation = verify::verify(server.base_url(), &root, now()).unwrap();
+    let generation = verify::verify(server.base_url(), &root, now())
+        .unwrap()
+        .expect("a published channel names a generation");
 
     assert_eq!(generation.generation_id, published.generation_id);
     assert_eq!(generation.version, 1);
@@ -103,4 +105,15 @@ fn a_published_channel_resolves_its_generation_over_http() {
         generation.generation_id,
         manifest::generation_id(&std::fs::read(&manifest_path).unwrap())
     );
+}
+
+#[test]
+fn a_channel_with_no_generation_yet_verifies_as_empty() {
+    let (_dir, workspace) = seeded_workspace();
+    let server = serve_channel(&workspace);
+
+    let root = std::fs::read(workspace.channel().metadata_dir().join("root.json")).unwrap();
+    let generation = verify::verify(server.base_url(), &root, now()).unwrap();
+
+    assert!(generation.is_none());
 }

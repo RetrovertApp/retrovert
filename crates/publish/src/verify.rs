@@ -236,20 +236,25 @@ pub fn check(workspace: &Workspace, now: Timestamp) -> Result<Chain> {
 }
 
 /// Refresh the channel at `base_url` against `root`, then resolve the manifest
-/// it names, as of `now`.
-pub fn verify(base_url: &str, root: &[u8], now: Timestamp) -> Result<Generation> {
+/// it names, as of `now`. `None` is a channel that verifies but has never had
+/// a generation published.
+pub fn verify(base_url: &str, root: &[u8], now: Timestamp) -> Result<Option<Generation>> {
     let mut updater = Updater::new(HttpChannel::new(base_url), root)?;
     pollster::block_on(updater.refresh(now))?;
-    let bytes = pollster::block_on(updater.get_target(manifest::TARGET_PATH, now))?;
+    let Some(target) = pollster::block_on(updater.get_targetinfo(manifest::TARGET_PATH, now))?
+    else {
+        return Ok(None);
+    };
+    let bytes = pollster::block_on(updater.download_target(&target, manifest::TARGET_PATH))?;
 
     let manifest = manifest::Manifest::parse(&bytes)?;
-    Ok(Generation {
+    Ok(Some(Generation {
         generation_id: manifest::generation_id(&bytes),
         version: manifest.version,
         source_revision: manifest.source_revision,
         published: manifest.published,
         artifacts: manifest.artifacts.len(),
-    })
+    }))
 }
 
 /// A query that makes a mutable name's URL one no cache has seen, or nothing at
