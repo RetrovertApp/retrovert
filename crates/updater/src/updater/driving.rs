@@ -506,3 +506,60 @@ fn a_job_that_panics_leaves_the_updater_taking_work() {
     settle(&updater);
     assert!(updater.poll().available.is_some());
 }
+
+/// The plan a fresh check offers, with the updater settled.
+fn checked_plan(updater: &Updater) -> crate::Plan {
+    updater.check_now(Priority::User);
+    settle(updater);
+    updater.poll().available.expect("a plan")
+}
+
+#[test]
+fn a_fetch_takes_one_artifact_at_a_time_and_publishes_nothing() {
+    let fixture = Fixture::new(
+        vec![plugin("spu", 1, 4096), plugin("uade", 2, 4096)],
+        None,
+        1,
+    );
+    let updater = fixture.updater(false);
+    let plan = checked_plan(&updater);
+
+    for (artifact, payload) in plan.artifacts.iter().zip(&fixture.payloads) {
+        let path = updater
+            .fetch(artifact, plan.release_version, Priority::User)
+            .unwrap();
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            payload.bytes,
+            "{}",
+            artifact.name
+        );
+    }
+
+    assert!(updater.generations().unwrap().is_empty());
+    assert_eq!(updater.next_completed(), None);
+    assert_eq!(checked_plan(&updater).generation_id, fixture.generation_id);
+}
+
+#[test]
+fn a_fetch_whose_bytes_miss_the_digest_is_refused_and_leaves_no_cache_entry() {
+    let fixture = Fixture::instant();
+    let updater = fixture.updater(false);
+    let plan = checked_plan(&updater);
+
+    let mut forged = plan.artifacts[0].clone();
+    forged.sha256 = "ab".repeat(32);
+    let err = updater
+        .fetch(&forged, plan.release_version, Priority::User)
+        .unwrap_err();
+
+    assert!(
+        matches!(&err, super::Error::Apply(crate::ApplyError::Artifact { name, .. }) if name == "spu"),
+        "{err}"
+    );
+    assert!(
+        !updater.evict_cached(&forged.sha256),
+        "nothing complete was kept"
+    );
+    assert!(updater.generations().unwrap().is_empty());
+}

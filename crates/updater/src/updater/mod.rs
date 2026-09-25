@@ -20,11 +20,12 @@ mod driving;
 mod round_trip;
 
 use std::panic::{self, AssertUnwindSafe};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::Artifact;
 use crate::apply::{Applier, Completions, Generation, InstallRoot};
 use crate::channel::{Channel, TrustStore};
 use crate::check::{CheckLog, Checker, Outcome, Plan, Record};
@@ -157,6 +158,25 @@ impl Updater {
             plan: plan.clone(),
             priority,
         })
+    }
+
+    /// Acquire one artifact of release set `release_version` into the download
+    /// cache, verified, and return its path. Blocks until it lands or fails.
+    ///
+    /// Unlike [`Updater::apply`] this publishes no generation, runs beside a
+    /// check or an apply, and leaves the cache entry for the caller to
+    /// [`Updater::evict_cached`] once it has taken the bytes. The cache holds
+    /// one file per digest, so fetches of one artifact must not overlap.
+    pub fn fetch(
+        &self,
+        artifact: &Artifact,
+        release_version: u64,
+        priority: Priority,
+    ) -> Result<PathBuf> {
+        Ok(self
+            .inner
+            .applier
+            .fetch(artifact, release_version, priority)?)
     }
 
     /// Pause every transfer in flight, keeping its partial file resumable.

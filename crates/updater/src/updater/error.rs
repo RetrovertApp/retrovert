@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 /// Errors produced constructing or querying an updater.
 ///
-/// Nothing a check or an apply fails with reaches here — those run on the
-/// updater's own thread and are reported through [`super::StatusSnapshot`].
+/// A check or an apply runs on the updater's own thread and reports through
+/// [`super::StatusSnapshot`] instead; a [`super::Updater::fetch`] fails here.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -17,7 +17,7 @@ pub enum Error {
     #[error(transparent)]
     Check(#[from] crate::check::Error),
 
-    /// The install root could not be read or written.
+    /// The install root could not be read or written, or a fetch failed.
     #[error(transparent)]
     Apply(#[from] crate::apply::Error),
 

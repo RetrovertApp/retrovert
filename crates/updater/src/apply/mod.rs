@@ -26,7 +26,7 @@ mod generations;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::{self, File};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::Duration;
@@ -122,6 +122,62 @@ impl Applier {
         };
         self.completions.record(&generation);
         Ok(generation)
+    }
+
+    /// Acquire one artifact of release set `release_version` into the
+    /// download cache and return where its verified bytes are.
+    ///
+    /// Publishes no generation, so a consumer that keeps its own store can
+    /// take a release set one artifact at a time. A copy that fails its digest
+    /// is evicted.
+    pub fn fetch(
+        &self,
+        artifact: &Artifact,
+        release_version: u64,
+        priority: Priority,
+    ) -> Result<PathBuf> {
+        refuse_unsafe_path(artifact)?;
+        let digest = digest_of(artifact)?;
+        let request = self.request_for(artifact, release_version, priority)?;
+        let mut queued = Acquisition::new(&self.queue);
+        let id = loop {
+            if let Some(id) = self.queue.queue(request.clone()) {
+                break id;
+            }
+            thread::sleep(POLL);
+        };
+        queued.active.push((id, 0));
+
+        let cached = loop {
+            match self.queue.state(id) {
+                State::Complete => break self.queue.path(id),
+                State::Failed => {
+                    return Err(Error::Artifact {
+                        name: artifact.name.clone(),
+                        source: self.queue.failure(id).unwrap_or(Failure::Panicked),
+                    });
+                }
+                State::Cancelled => {
+                    return Err(Error::Cancelled {
+                        name: artifact.name.clone(),
+                    });
+                }
+                State::Pending | State::Downloading | State::Paused | State::Preempted => {
+                    thread::sleep(POLL);
+                }
+            }
+        };
+
+        let verified = cached
+            .ok_or(Failure::Unreadable)
+            .and_then(|path| verify_on_disk(&path, &digest).map(|()| path));
+        verified.map_err(|source| {
+            self.queue.transport().cache().evict(&digest);
+            Error::Artifact {
+                name: artifact.name.clone(),
+                source,
+            }
+        })
     }
 
     fn publish(&self, plan: &Plan, priority: Priority) -> Result<Generation> {
@@ -377,13 +433,15 @@ fn refuse_unsafe_names(plan: &Plan) -> Result<()> {
             id: plan.generation_id.clone(),
         });
     }
-    for artifact in &plan.artifacts {
-        if !retrovert_tuf::manifest::is_clean_relative_path(&artifact.path) {
-            return Err(Error::UnsafePath {
-                name: artifact.name.clone(),
-                path: artifact.path.clone(),
-            });
-        }
+    plan.artifacts.iter().try_for_each(refuse_unsafe_path)
+}
+
+fn refuse_unsafe_path(artifact: &Artifact) -> Result<()> {
+    if !retrovert_tuf::manifest::is_clean_relative_path(&artifact.path) {
+        return Err(Error::UnsafePath {
+            name: artifact.name.clone(),
+            path: artifact.path.clone(),
+        });
     }
     Ok(())
 }
